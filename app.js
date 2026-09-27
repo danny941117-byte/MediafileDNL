@@ -19,7 +19,12 @@ if (document.readyState === "loading") {
 
 const CONFIG = {
   API_URL: "https://m-e2a5ediafile-dnl.danny941117.workers.dev",
-  VERSION: "1.6.1"
+  VERSION: "1.9.4",
+  // Capacidad de referencia del almacenamiento B2 gratuito que estamos usando.
+  // Si el bucket tiene otra capacidad, cambia solamente este valor.
+  STORAGE_LIMIT_BYTES: 10 * 1024 * 1024 * 1024,
+  // Límite de subida por archivo que atraviesa el Worker/Cloudflare.
+  MAX_UPLOAD_FILE_BYTES: 100 * 1024 * 1024
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -286,6 +291,7 @@ async function deleteFile(file) {
     renderFiles();
     renderGallery();
     updateReceiptCard();
+    updateStorageInfo();
 
     const photoResults = document.getElementById("photoResultsOverlay");
     if (photoResults) {
@@ -303,6 +309,8 @@ async function deleteFile(file) {
         currentTitle === "Todas las fotos" ? null : activePhotoDay
       );
     }
+
+    refreshMediaResultsOverlay();
 
     log("Archivo eliminado correctamente", { name });
 
@@ -812,7 +820,9 @@ function createFileElement(file) {
 
   element.className =
     "file mediafile-file" +
-    (document.getElementById("photoResultsOverlay") ? " photo-results-file" : "");
+    ((document.getElementById("photoResultsOverlay") || document.getElementById("mediaResultsOverlay"))
+      ? " photo-results-file"
+      : "");
 
 
   element.innerHTML = `
@@ -1323,6 +1333,131 @@ function openPhotoDayMenu() {
   });
 }
 
+
+// ============================================================
+// VISOR FLOTANTE UNIFICADO PARA CUALQUIER CATEGORÍA
+// Misma presentación visual de Fotos para Videos, Comprobantes y Todos.
+// ============================================================
+
+function getCategoryFiles(filter) {
+  if (filter === "all") return [...allFiles];
+  if (filter === "receipt") return getReceiptFiles();
+  return allFiles.filter(file => fileKind(file) === filter);
+}
+
+function categoryLabel(filter) {
+  if (filter === "video") return "Videos";
+  if (filter === "receipt") return "Comprobantes";
+  if (filter === "audio") return "Audios";
+  if (filter === "pdf") return "PDF";
+  if (filter === "image") return "Fotos";
+  return "Todos los archivos";
+}
+
+function categoryIcon(filter) {
+  if (filter === "video") return "🎬";
+  if (filter === "receipt") return "🧾";
+  if (filter === "audio") return "🎵";
+  if (filter === "pdf") return "📕";
+  if (filter === "image") return "🖼️";
+  return "📁";
+}
+
+function closeMediaResults() {
+  document.getElementById("mediaResultsOverlay")?.remove();
+}
+
+function enforceMediaCardControls(card, file) {
+  if (!card || !file) return;
+
+  const actions = card.querySelector(".mediafile-actions");
+  if (!actions ||
+      !actions.querySelector(".mediafile-open") ||
+      !actions.querySelector(".mediafile-preview") ||
+      !actions.querySelector(".mediafile-download") ||
+      !actions.querySelector(".mediafile-delete")) {
+    const rebuilt = createFileElement(file);
+    card.replaceWith(rebuilt);
+    return rebuilt;
+  }
+
+  return card;
+}
+
+function renderMediaResultsGrid(overlay, files, emptyText) {
+  const grid = overlay?.querySelector(".photo-results-grid");
+  if (!grid) return;
+  grid.innerHTML = "";
+  if (!files.length) {
+    grid.innerHTML = `<div class="photo-results-empty">${escapeHtml(emptyText || "No hay archivos para mostrar.")}</div>`;
+    return;
+  }
+  files.forEach(file => {
+    const card = createFileElement(file);
+    grid.appendChild(card);
+    enforceMediaCardControls(card, file);
+  });
+}
+
+function openMediaResults(filter = activeFilter) {
+  closeMediaResults();
+  closePhotoResults();
+  closePhotoDayMenu();
+
+  const files = getCategoryFiles(filter);
+  const label = categoryLabel(filter);
+  const icon = categoryIcon(filter);
+  const overlay = document.createElement("div");
+  overlay.id = "mediaResultsOverlay";
+  overlay.className = "photo-results-overlay media-results-overlay";
+  overlay.dataset.filter = filter;
+
+  overlay.innerHTML = `
+    <div class="photo-results-dialog" role="dialog" aria-modal="true" aria-label="${escapeHtml(label)}">
+      <div class="photo-results-head">
+        <div class="photo-results-head-main">
+          <span class="photo-results-eyebrow">CARPETA · ${escapeHtml(label.toUpperCase())}</span>
+          <h2>${icon} ${escapeHtml(label)}</h2>
+          <p>${files.length} ${files.length === 1 ? "archivo almacenado" : "archivos almacenados"}</p>
+        </div>
+        <button class="photo-results-close" type="button" aria-label="Cerrar">✕</button>
+      </div>
+      <div class="photo-results-toolbar">
+        <button class="photo-results-back" type="button">← Categorías</button>
+        <span>${files.length} ${files.length === 1 ? "archivo" : "archivos"}</span>
+      </div>
+      <div class="photo-results-grid"></div>
+    </div>`;
+
+  document.body.appendChild(overlay);
+  renderMediaResultsGrid(overlay, files, `No hay ${label.toLowerCase()} para mostrar.`);
+
+  overlay.querySelector(".photo-results-close")?.addEventListener("click", closeMediaResults);
+  overlay.addEventListener("click", event => {
+    if (event.target === overlay) closeMediaResults();
+  });
+  overlay.querySelector(".photo-results-back")?.addEventListener("click", () => {
+    closeMediaResults();
+  });
+
+  log("Ventana de archivos abierta", { categoria: label, total: files.length });
+}
+
+function refreshMediaResultsOverlay() {
+  const overlay = document.getElementById("mediaResultsOverlay");
+  if (!overlay) return;
+  const filter = overlay.dataset.filter || "all";
+  const files = getCategoryFiles(filter);
+  const title = overlay.querySelector(".photo-results-head h2");
+  const subtitle = overlay.querySelector(".photo-results-head p");
+  const toolbar = overlay.querySelector(".photo-results-toolbar span");
+  const label = categoryLabel(filter);
+  if (title) title.textContent = `${categoryIcon(filter)} ${label}`;
+  if (subtitle) subtitle.textContent = `${files.length} ${files.length === 1 ? "archivo almacenado" : "archivos almacenados"}`;
+  if (toolbar) toolbar.textContent = `${files.length} ${files.length === 1 ? "archivo" : "archivos"}`;
+  renderMediaResultsGrid(overlay, files, `No hay ${label.toLowerCase()} para mostrar.`);
+}
+
 // ============================================================
 // RENDERIZAR ARCHIVOS
 // ============================================================
@@ -1401,6 +1536,78 @@ function renderFiles() {
       );
     }
   );
+}
+
+
+// ============================================================
+// ALMACENAMIENTO
+// ============================================================
+
+function getStoredBytes() {
+  return allFiles.reduce((total, file) => {
+    const value = Number(
+      file?.contentLength ??
+      file?.size ??
+      file?.tamañoBytes ??
+      0
+    );
+    return total + (Number.isFinite(value) && value > 0 ? value : 0);
+  }, 0);
+}
+
+function formatStorageBytes(bytes) {
+  if (!Number.isFinite(bytes) || bytes < 0) return "0 B";
+  if (bytes < 1024) return `${Math.round(bytes)} B`;
+  if (bytes < 1024 ** 2) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024 ** 3) return `${(bytes / 1024 ** 2).toFixed(2)} MB`;
+  return `${(bytes / 1024 ** 3).toFixed(2)} GB`;
+}
+
+function updateStorageInfo() {
+  const used = getStoredBytes();
+  const limit = Number(CONFIG.STORAGE_LIMIT_BYTES) || 0;
+  const free = Math.max(0, limit - used);
+  const percent = limit > 0 ? Math.min(100, (used / limit) * 100) : 0;
+
+  let card = document.getElementById("mediafileStorageCard");
+  if (!card) {
+    const hero = document.querySelector(".hero");
+    if (!hero) return;
+
+    card = document.createElement("div");
+    card.id = "mediafileStorageCard";
+    card.style.cssText = `
+      margin-top:16px;
+      padding:13px 14px;
+      border:1px solid rgba(82,216,255,.18);
+      border-radius:16px;
+      background:rgba(3,12,22,.55);
+    `;
+    hero.appendChild(card);
+  }
+
+  card.innerHTML = `
+    <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;">
+      <div>
+        <div style="color:#52d8ff;font-size:10px;font-weight:800;letter-spacing:1.5px;">ALMACENAMIENTO</div>
+        <div style="color:#edf7ff;font-size:13px;font-weight:700;margin-top:3px;">${formatStorageBytes(free)} disponibles</div>
+      </div>
+      <div style="text-align:right;color:#89a7bb;font-size:10px;line-height:1.45;">
+        Usado: ${formatStorageBytes(used)}<br>
+        Capacidad máxima: ${formatStorageBytes(limit)}<br>
+        Máximo por archivo: ${formatStorageBytes(Number(CONFIG.MAX_UPLOAD_FILE_BYTES) || 0)}
+      </div>
+    </div>
+    <div style="height:6px;margin-top:10px;border-radius:99px;background:rgba(255,255,255,.07);overflow:hidden;">
+      <div style="height:100%;width:${percent.toFixed(2)}%;border-radius:99px;background:linear-gradient(90deg,#52d8ff,#8a6cff);transition:width .3s ease;"></div>
+    </div>`;
+
+  log("Almacenamiento actualizado", {
+    usadoBytes: used,
+    disponibleBytes: free,
+    capacidadBytes: limit,
+    porcentajeUsado: Number(percent.toFixed(2))
+  });
 }
 
 
@@ -1490,6 +1697,7 @@ async function loadFiles() {
 
 
     renderFiles();
+    updateStorageInfo();
 
 
     setConnection(
@@ -1503,6 +1711,7 @@ async function loadFiles() {
     allFiles = [];
 
     renderFiles();
+    updateStorageInfo();
 
 
     setConnection(
@@ -1694,25 +1903,7 @@ document
           activePhotoDay = null;
 
           renderFiles();
-
-          if (activeFilter === "receipt") {
-            log("Comprobantes abiertos", {
-              total: getReceiptFiles().length
-            });
-          }
-
-          const panel =
-            document.querySelector(
-              ".panel"
-            );
-
-          if (panel) {
-
-            panel.scrollIntoView({
-              behavior:
-                "smooth"
-            });
-          }
+          openMediaResults(requestedFilter);
         }
       );
     }
@@ -1800,6 +1991,8 @@ let videoFiles = [];
 let videoIndex = 0;
 let videoResizeBound = false;
 let videoMetadataBound = false;
+let videoBlobUrl = null;
+let videoLoadToken = 0;
 
 function refreshVideoFiles() {
   videoFiles = allFiles.filter(file => fileKind(file) === "video");
@@ -2014,13 +2207,24 @@ function openVideoLightbox(file) {
   });
 }
 
+function releaseVideoBlob() {
+  if (videoBlobUrl) {
+    try { URL.revokeObjectURL(videoBlobUrl); } catch (_) {}
+    videoBlobUrl = null;
+  }
+}
+
 function closeVideoLightbox() {
+  videoLoadToken++;
   const box = $("#videoLightbox");
   const player = $("#videoLightboxPlayer");
+
+  releaseVideoBlob();
 
   if (player) {
     try { player.pause(); } catch (_) {}
     player.removeAttribute("src");
+    player.removeAttribute("poster");
     player.load();
     player.style.width = "";
     player.style.height = "";
@@ -2033,7 +2237,7 @@ function closeVideoLightbox() {
   document.body.classList.remove("video-open");
 }
 
-function renderVideoLightbox() {
+async function renderVideoLightbox() {
   refreshVideoFiles();
 
   if (!videoFiles.length) {
@@ -2050,6 +2254,7 @@ function renderVideoLightbox() {
   const counter = $("#videoLightboxCounter");
   const prev = $("#videoLightboxPrev");
   const next = $("#videoLightboxNext");
+  const token = ++videoLoadToken;
 
   if (title) title.textContent = getFileName(file);
   if (counter) {
@@ -2059,19 +2264,96 @@ function renderVideoLightbox() {
   if (prev) prev.disabled = videoFiles.length <= 1;
   if (next) next.disabled = videoFiles.length <= 1;
 
-  if (player) {
-    try { player.pause(); } catch (_) {}
-    player.crossOrigin = "use-credentials";
-    player.style.width = "";
-    player.style.height = "";
+  releaseVideoBlob();
+
+  if (!player) return;
+
+  try { player.pause(); } catch (_) {}
+  player.removeAttribute("src");
+  player.load();
+  player.style.width = "";
+  player.style.height = "";
+
+  // El Worker puede entregar el archivo sin soporte completo de Range.
+  // En ese caso Android muestra la miniatura pero no inicia la reproducción.
+  // Descargamos el video como Blob y se lo damos al reproductor localmente.
+  player.setAttribute("aria-busy", "true");
+  player.dataset.loading = "true";
+
+  log("Preparando video para reproducción", {
+    name: getFileName(file),
+    url: getFileUrl(file)
+  });
+
+  try {
+    const response = await fetch(getFileUrl(file), {
+      method: "GET",
+      mode: "cors",
+      credentials: "omit",
+      cache: "no-store"
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+
+    const sourceBlob = await response.blob();
+
+    if (!sourceBlob.size) {
+      throw new Error("El archivo de video llegó vacío.");
+    }
+
+    if (token !== videoLoadToken) return;
+
+    const responseType = response.headers.get("content-type") || "";
+    const fileType = getContentType(file);
+    const finalType = responseType.startsWith("video/")
+      ? responseType
+      : (fileType.startsWith("video/") ? fileType : "video/mp4");
+
+    const playableBlob = sourceBlob.type === finalType
+      ? sourceBlob
+      : new Blob([sourceBlob], { type: finalType });
+
+    videoBlobUrl = URL.createObjectURL(playableBlob);
+    player.src = videoBlobUrl;
+    player.load();
+
+    player.addEventListener("loadedmetadata", () => {
+      if (token !== videoLoadToken) return;
+      fitFloatingVideo();
+    }, { once: true });
+
+    player.addEventListener("canplay", () => {
+      if (token !== videoLoadToken) return;
+      player.dataset.loading = "false";
+      player.removeAttribute("aria-busy");
+      log("Video listo para reproducir", {
+        name: getFileName(file),
+        bytes: sourceBlob.size,
+        type: finalType
+      });
+    }, { once: true });
+
+  } catch (error) {
+    if (token !== videoLoadToken) return;
+
+    player.dataset.loading = "false";
+    player.removeAttribute("aria-busy");
+
+    // Último intento: fuente directa. Esto permite reproducir servidores
+    // que sí soportan Range aunque el fetch CORS esté bloqueado.
     player.src = getFileUrl(file);
     player.load();
-    player.currentTime = 0;
+
+    log("FALLÓ CARGA BLOB; intentando fuente directa", {
+      name: getFileName(file),
+      message: error?.message || String(error)
+    });
   }
 
   requestAnimationFrame(fitFloatingVideo);
 }
-
 function moveVideo(direction) {
   if (videoFiles.length <= 1) return;
 
@@ -2664,104 +2946,6 @@ initImageLightbox();
     .photo-results-grid{flex:1;overflow:auto;padding:14px;display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,320px),1fr));gap:12px;align-content:start}
     .photo-results-grid .file{min-width:0}.photo-results-empty{grid-column:1/-1;display:grid;place-items:center;min-height:180px;color:#91a6ba;text-align:center}
     /* Tarjetas de fotos: ordenadas y cómodas en móvil */
-    /* ==========================================================
-       LISTADO PRINCIPAL / MINIATURAS — MISMA PRESENTACIÓN
-       QUE LA VENTANA "TODOS"
-       ========================================================== */
-    .thumbnail-subfolder .file-list{
-      display:grid!important;
-      grid-template-columns:repeat(2,minmax(0,1fr))!important;
-      gap:10px!important;
-      padding:10px!important;
-      align-items:start!important;
-      overflow:visible!important;
-    }
-    .thumbnail-subfolder .file-list > .empty{
-      grid-column:1 / -1!important;
-    }
-    .thumbnail-subfolder .mediafile-file{
-      min-width:0!important;
-      width:100%!important;
-      box-sizing:border-box!important;
-      display:flex!important;
-      flex-direction:column!important;
-      gap:6px!important;
-      padding:8px!important;
-      border:1px solid rgba(74,197,255,.20)!important;
-      border-radius:17px!important;
-      background:linear-gradient(145deg,rgba(10,24,40,.96),rgba(5,13,24,.98))!important;
-      box-shadow:0 8px 22px rgba(0,0,0,.22)!important;
-      overflow:hidden!important;
-    }
-    .thumbnail-subfolder .mediafile-file .file-type{display:none!important}
-    .thumbnail-subfolder .mediafile-file .file-info{
-      min-width:0!important;
-      display:flex!important;
-      flex-direction:column!important;
-      gap:5px!important;
-    }
-    .thumbnail-subfolder .mediafile-file .file-name{
-      order:2!important;
-      min-width:0!important;
-      overflow:hidden!important;
-      text-overflow:ellipsis!important;
-      white-space:nowrap!important;
-      font-size:13px!important;
-      line-height:1.25!important;
-      font-weight:800!important;
-    }
-    .thumbnail-subfolder .mediafile-file .file-meta{
-      order:3!important;
-      overflow:hidden!important;
-      text-overflow:ellipsis!important;
-      white-space:nowrap!important;
-      color:#829bb0!important;
-      font-size:10px!important;
-    }
-    .thumbnail-subfolder .mediafile-file .mediafile-preview{
-      order:1!important;
-      width:100%!important;
-      height:105px!important;
-      min-height:105px!important;
-      margin:0!important;
-      border:1px solid rgba(82,216,255,.14)!important;
-      border-radius:12px!important;
-      background:#071321!important;
-      overflow:hidden!important;
-    }
-    .thumbnail-subfolder .mediafile-file .mediafile-preview img,
-    .thumbnail-subfolder .mediafile-file .mediafile-preview video{
-      width:100%!important;
-      height:100%!important;
-      object-fit:cover!important;
-      display:block!important;
-    }
-    .thumbnail-subfolder .mediafile-file .mediafile-actions{
-      order:4!important;
-      display:grid!important;
-      grid-template-columns:1fr 1fr!important;
-      gap:5px!important;
-      margin-top:2px!important;
-    }
-    .thumbnail-subfolder .mediafile-file .mediafile-actions > button{
-      min-width:0!important;
-      min-height:34px!important;
-      padding:6px 5px!important;
-      font-size:10px!important;
-      border-radius:9px!important;
-    }
-    .thumbnail-subfolder .mediafile-file .mediafile-preview{
-      grid-column:1 / -1!important;
-    }
-    @media(max-width:420px){
-      .thumbnail-subfolder .file-list{gap:8px!important;padding:8px!important}
-      .thumbnail-subfolder .mediafile-file{padding:6px!important;border-radius:15px!important}
-      .thumbnail-subfolder .mediafile-file .mediafile-preview{height:88px!important;min-height:88px!important}
-      .thumbnail-subfolder .mediafile-file .file-name{font-size:11px!important}
-      .thumbnail-subfolder .mediafile-file .file-meta{font-size:9px!important}
-      .thumbnail-subfolder .mediafile-file .mediafile-actions > button{font-size:9px!important;min-height:31px!important}
-    }
-
     .photo-results-file{display:flex!important;flex-direction:column!important;gap:10px!important;padding:12px!important;border:1px solid rgba(74,197,255,.20)!important;border-radius:18px!important;background:linear-gradient(145deg,rgba(10,24,40,.96),rgba(5,13,24,.98))!important;box-shadow:0 10px 28px rgba(0,0,0,.24)!important;overflow:hidden!important}
     .photo-results-file .file-type{display:none!important}
     .photo-results-file .file-info{display:flex!important;flex-direction:column!important;min-width:0!important;gap:7px!important}
@@ -2774,6 +2958,39 @@ initImageLightbox();
     .photo-results-file .mediafile-open{background:rgba(82,216,255,.12)!important;color:#dff8ff!important;border:1px solid rgba(82,216,255,.24)!important}
     .photo-results-file .mediafile-download{background:rgba(82,216,255,.10)!important;color:#dff8ff!important;border:1px solid rgba(82,216,255,.20)!important}
     .photo-results-file .mediafile-delete{background:#8f2020!important;color:#fff!important;border:1px solid rgba(255,120,120,.22)!important}
+    /* v1.9.4 — presentación unificada de TODOS / FOTOS / VIDEOS / COMPROBANTES */
+    .media-results-overlay .photo-results-file,
+    .photo-results-overlay .photo-results-file{
+      display:flex!important;
+      flex-direction:column!important;
+      min-width:0!important;
+    }
+    .media-results-overlay .photo-results-file .mediafile-actions,
+    .photo-results-overlay .photo-results-file .mediafile-actions{
+      display:grid!important;
+      grid-template-columns:1fr 1fr!important;
+      gap:8px!important;
+      width:100%!important;
+      visibility:visible!important;
+      opacity:1!important;
+    }
+    .media-results-overlay .photo-results-file .mediafile-actions > button,
+    .photo-results-overlay .photo-results-file .mediafile-actions > button{
+      display:flex!important;
+      align-items:center!important;
+      justify-content:center!important;
+      visibility:visible!important;
+      opacity:1!important;
+    }
+    .media-results-overlay .photo-results-file .mediafile-preview,
+    .photo-results-overlay .photo-results-file .mediafile-preview{
+      display:flex!important;
+      grid-column:1 / -1!important;
+      width:100%!important;
+      height:200px!important;
+      order:-1!important;
+    }
+
     .mediafile-modal{z-index:100020!important}
     .mediafile-modal img{max-width:100%!important;max-height:calc(92dvh - 110px)!important;object-fit:contain!important}
     @media(max-width:520px){.photo-results-overlay{padding:8px}.photo-results-dialog{height:94vh;border-radius:20px}.photo-results-head{padding:15px 13px 12px}.photo-results-grid{padding:10px;grid-template-columns:1fr;gap:10px}.photo-results-toolbar{padding:9px 11px}.photo-results-file .mediafile-preview{height:200px!important}.photo-results-file .mediafile-actions{grid-template-columns:1fr 1fr!important}.photo-results-file .mediafile-actions>button{font-size:13px!important;padding:9px 8px!important}}
