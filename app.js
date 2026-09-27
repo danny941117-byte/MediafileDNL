@@ -988,6 +988,14 @@ function createFileElement(file) {
     thumbButton.innerHTML = "";
     thumbButton.appendChild(thumb);
 
+    // Tocar directamente la imagen también abre el visor.
+    // Esto hace que toda la miniatura sea interactiva en móviles.
+    thumb.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      previewFile(file);
+    });
+
     // Pequeña etiqueta sobre la miniatura.
     const badge =
       document.createElement("span");
@@ -1031,6 +1039,13 @@ function createFileElement(file) {
 
     thumbButton.innerHTML = "";
     thumbButton.appendChild(video);
+
+    // Tocar directamente la miniatura del video también abre el visor.
+    video.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      openVideoLightbox(file);
+    });
 
     const badge =
       document.createElement("span");
