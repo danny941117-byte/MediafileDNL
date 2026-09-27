@@ -1463,7 +1463,7 @@ if (fileInput) {
 
 
 // ============================================================
-// VISOR DE IMAGEN / LIGHTBOX — v1.6.2
+// VISOR DE IMAGEN / LIGHTBOX — v1.6.0
 // ============================================================
 
 let galleryImages = [];
@@ -1644,54 +1644,65 @@ async function downloadCurrentLightboxImage() {
 }
 
 function initImageLightbox() {
-  const close = $("#lightboxClose");
-  const backdrop = document.querySelector("[data-lightbox-close]");
-  const prev = $("#lightboxPrev");
-  const next = $("#lightboxNext");
-  const download = $("#lightboxDownload");
+  document.addEventListener("click", event => {
+    const target = event.target;
 
-  if (close) close.addEventListener("click", closeImageLightbox);
-  if (backdrop) backdrop.addEventListener("click", closeImageLightbox);
+    if (target.closest("#lightboxClose") ||
+        target.closest("[data-lightbox-close]")) {
+      event.preventDefault();
+      event.stopPropagation();
+      closeImageLightbox();
+      return;
+    }
 
-  if (prev) {
-    prev.addEventListener("click", () => lightboxMove(-1));
-  }
+    if (target.closest("#lightboxPrev")) {
+      event.preventDefault();
+      event.stopPropagation();
+      lightboxMove(-1);
+      return;
+    }
 
-  if (next) {
-    next.addEventListener("click", () => lightboxMove(1));
-  }
+    if (target.closest("#lightboxNext")) {
+      event.preventDefault();
+      event.stopPropagation();
+      lightboxMove(1);
+      return;
+    }
 
-  if (download) {
-    download.addEventListener(
-      "click",
-      downloadCurrentLightboxImage
-    );
-  }
+    if (target.closest("#lightboxDownload")) {
+      event.preventDefault();
+      event.stopPropagation();
+      downloadCurrentLightboxImage();
+      return;
+    }
+  }, true);
 
   document.addEventListener("keydown", event => {
     const lightbox = $("#imageLightbox");
     if (!lightbox || lightbox.hidden) return;
 
     if (event.key === "Escape") {
+      event.preventDefault();
       closeImageLightbox();
     } else if (event.key === "ArrowLeft") {
+      event.preventDefault();
       lightboxMove(-1);
     } else if (event.key === "ArrowRight") {
+      event.preventDefault();
       lightboxMove(1);
     }
   });
 
   log("Visor inicializado", {
-    cerrar: !!close,
-    anterior: !!prev,
-    siguiente: !!next,
-    descargar: !!download
+    cerrar: !!$("#lightboxClose"),
+    anterior: !!$("#lightboxPrev"),
+    siguiente: !!$("#lightboxNext"),
+    descargar: !!$("#lightboxDownload")
   });
 }
 
-
 // ============================================================
-// GALERÍA REAL — v1.6.2
+// GALERÍA REAL — v1.5.0
 // ============================================================
 
 function getImageFiles() {
@@ -1869,15 +1880,7 @@ if (galleryBack) {
   );
 }
 
-if (document.readyState === "loading") {
-  document.addEventListener(
-    "DOMContentLoaded",
-    initImageLightbox,
-    { once: true }
-  );
-} else {
-  initImageLightbox();
-}
+initImageLightbox();
 
 // ============================================================
 // INICIO
