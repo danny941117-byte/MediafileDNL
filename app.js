@@ -19,7 +19,7 @@ if (document.readyState === "loading") {
 
 const CONFIG = {
   API_URL: "https://m-e2a5ediafile-dnl.danny941117.workers.dev",
-  VERSION: "2.0.0",
+  VERSION: "2.0.1",
   // Capacidad de referencia del almacenamiento B2 gratuito que estamos usando.
   // Si el bucket tiene otra capacidad, cambia solamente este valor.
   STORAGE_LIMIT_BYTES: 10 * 1024 * 1024 * 1024
@@ -2008,7 +2008,7 @@ function ensureFloatingVideoStyles() {
     #videoLightbox.video-lightbox {
       position: fixed !important;
       inset: 0 !important;
-      z-index: 99990 !important;
+      z-index: 100500 !important;
       display: grid !important;
       place-items: center !important;
       padding: max(12px, env(safe-area-inset-top))
@@ -2174,6 +2174,16 @@ function bindFloatingVideoEvents() {
 }
 
 function openVideoLightbox(file) {
+  // El reproductor debe quedar POR ENCIMA de cualquier ventana flotante
+  // de Fotos/Videos/Comprobantes. Si quedó abierto un visor anterior,
+  // lo cerramos para evitar que tape el reproductor.
+  document.querySelectorAll(".mediafile-modal").forEach(modal => {
+    try { modal.remove(); } catch (_) {}
+  });
+
+  const imageLightbox = $("#imageLightbox");
+  if (imageLightbox) imageLightbox.hidden = true;
+
   refreshVideoFiles();
   ensureFloatingVideoStyles();
   bindFloatingVideoEvents();
