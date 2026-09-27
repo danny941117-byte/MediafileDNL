@@ -28,6 +28,8 @@ const logEl = $("#diagnosticLog");
 
 let allFiles = [];
 let activeFilter = "all";
+let activePhotoDay = null;
+let photoDayMenuOpen = false;
 
 
 // ============================================================
@@ -1092,6 +1094,116 @@ function createFileElement(file) {
 
 
 // ============================================================
+// FOTOS POR DÍA DE SUBIDA
+// ============================================================
+
+function getUploadTimestamp(file) {
+  const candidates = [
+    file?.uploadTimestamp, file?.uploadTime, file?.uploadedAt,
+    file?.uploadDate, file?.createdAt, file?.created,
+    file?.fechaSubida, file?.fecha, file?.date, file?.lastModified,
+    file?.fileInfo?.uploadTimestamp, file?.fileInfo?.uploadTime,
+    file?.fileInfo?.uploadedAt, file?.fileInfo?.uploadDate
+  ];
+  for (const value of candidates) {
+    if (value === undefined || value === null || value === "") continue;
+    const date = new Date(value);
+    if (!Number.isNaN(date.getTime())) return date;
+    const numeric = Number(value);
+    if (Number.isFinite(numeric)) {
+      const date2 = new Date(numeric < 100000000000 ? numeric * 1000 : numeric);
+      if (!Number.isNaN(date2.getTime())) return date2;
+    }
+  }
+  return null;
+}
+
+function getPhotoDayKey(file) {
+  const date = getUploadTimestamp(file);
+  if (!date) return "unknown";
+  return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,"0")}-${String(date.getDate()).padStart(2,"0")}`;
+}
+
+function formatPhotoDay(key) {
+  if (key === "unknown") return "Fecha no disponible";
+  const parts = key.split("-").map(Number);
+  if (parts.length !== 3 || parts.some(Number.isNaN)) return key;
+  return new Intl.DateTimeFormat("es-GT", {
+    weekday: "long", day: "numeric", month: "long", year: "numeric"
+  }).format(new Date(parts[0], parts[1]-1, parts[2])).replace(/^./, c => c.toUpperCase());
+}
+
+function getPhotoDayGroups() {
+  const groups = new Map();
+  getImageFiles().forEach(file => {
+    const key = getPhotoDayKey(file);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(file);
+  });
+  return [...groups.entries()].sort((a,b) => {
+    if (a[0] === "unknown") return 1;
+    if (b[0] === "unknown") return -1;
+    return b[0].localeCompare(a[0]);
+  });
+}
+
+function closePhotoDayMenu() {
+  document.getElementById("photoDayMenu")?.remove();
+  photoDayMenuOpen = false;
+}
+
+function openPhotoDayMenu() {
+  if (photoDayMenuOpen) return;
+  const groups = getPhotoDayGroups();
+  const total = getImageFiles().length;
+  photoDayMenuOpen = true;
+
+  const overlay = document.createElement("div");
+  overlay.id = "photoDayMenu";
+  overlay.className = "photo-day-overlay";
+  overlay.innerHTML = `
+    <div class="photo-day-dialog" role="dialog" aria-modal="true" aria-label="Fotos por día">
+      <div class="photo-day-head">
+        <div>
+          <span class="photo-day-eyebrow">CARPETA · FOTOS</span>
+          <h2>Ordenar por día</h2>
+          <p>${total} ${total === 1 ? "foto almacenada" : "fotos almacenadas"}</p>
+        </div>
+        <button class="photo-day-close" type="button" aria-label="Cerrar">✕</button>
+      </div>
+      <div class="photo-day-list">
+        <button class="photo-day-option photo-day-all" type="button" data-photo-day="all">
+          <span class="photo-day-icon">🖼️</span>
+          <span class="photo-day-text"><b>Todas las fotos</b><small>${total} ${total === 1 ? "foto" : "fotos"}</small></span>
+          <span class="photo-day-arrow">›</span>
+        </button>
+        ${groups.map(([key, files]) => `
+          <button class="photo-day-option" type="button" data-photo-day="${escapeHtml(key)}">
+            <span class="photo-day-icon">📅</span>
+            <span class="photo-day-text"><b>${escapeHtml(formatPhotoDay(key))}</b><small>${files.length} ${files.length === 1 ? "foto" : "fotos"}</small></span>
+            <span class="photo-day-arrow">›</span>
+          </button>`).join("")}
+        ${!groups.length ? '<div class="photo-day-empty">No hay fotos almacenadas todavía.</div>' : ""}
+      </div>
+    </div>`;
+
+  document.body.appendChild(overlay);
+  overlay.querySelector(".photo-day-close")?.addEventListener("click", closePhotoDayMenu);
+  overlay.addEventListener("click", event => { if (event.target === overlay) closePhotoDayMenu(); });
+  overlay.querySelectorAll("[data-photo-day]").forEach(button => {
+    button.addEventListener("click", () => {
+      const key = button.dataset.photoDay;
+      activeFilter = "image";
+      activePhotoDay = key === "all" ? null : key;
+      closePhotoDayMenu();
+      renderFiles();
+      document.querySelector(".panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      log("Fotos ordenadas por día", { dia: activePhotoDay || "todos" });
+    });
+  });
+}
+
+// ============================================================
 // RENDERIZAR ARCHIVOS
 // ============================================================
 
@@ -1105,10 +1217,14 @@ function renderFiles() {
   }
 
 
-  const filtered =
+  let filtered =
     allFiles.filter(
       matchesFilter
     );
+
+  if (activeFilter === "image" && activePhotoDay) {
+    filtered = filtered.filter(file => getPhotoDayKey(file) === activePhotoDay);
+  }
 
 
   const title =
@@ -1119,7 +1235,7 @@ function renderFiles() {
 
   const currentFolderName =
     activeFilter === "image"
-      ? "Fotos"
+      ? (activePhotoDay ? `Fotos · ${formatPhotoDay(activePhotoDay)}` : "Fotos")
       : activeFilter === "video"
         ? "Videos"
         : activeFilter === "audio"
@@ -1445,9 +1561,17 @@ document
         "click",
         () => {
 
-          activeFilter =
+          const requestedFilter =
             card.dataset.filter ||
             "all";
+
+          if (requestedFilter === "image") {
+            openPhotoDayMenu();
+            return;
+          }
+
+          activeFilter = requestedFilter;
+          activePhotoDay = null;
 
           renderFiles();
 
@@ -2339,6 +2463,7 @@ if (navFiles) {
     "click",
     () => {
       activeFilter = "all";
+      activePhotoDay = null;
       renderFiles();
       showFiles();
     }
@@ -2386,6 +2511,35 @@ if (galleryBack) {
 }
 
 initImageLightbox();
+
+// ============================================================
+// MENÚ FLOTANTE DE FOTOS POR DÍA — ESTILOS AISLADOS
+// ============================================================
+
+(function injectPhotoDayStyles() {
+  if (document.getElementById("photoDayMenuStyles")) return;
+  const style = document.createElement("style");
+  style.id = "photoDayMenuStyles";
+  style.textContent = `
+    .photo-day-overlay{position:fixed;inset:0;z-index:99990;display:grid;place-items:center;padding:18px;background:rgba(2,7,15,.72);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);animation:photoDayFade .18s ease-out}
+    .photo-day-dialog{width:min(560px,100%);max-height:min(760px,88vh);overflow:hidden;border:1px solid rgba(74,197,255,.42);border-radius:24px;background:linear-gradient(145deg,rgba(8,20,35,.98),rgba(4,11,22,.98));box-shadow:0 24px 80px rgba(0,0,0,.62),0 0 36px rgba(42,180,255,.1);animation:photoDayPop .22s cubic-bezier(.2,.8,.2,1)}
+    .photo-day-head{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:20px 20px 16px;border-bottom:1px solid rgba(110,190,235,.15)}
+    .photo-day-eyebrow{display:block;margin-bottom:5px;color:#63d8ff;font-size:11px;font-weight:800;letter-spacing:.18em}
+    .photo-day-head h2{margin:0;color:#f3f9ff;font-size:clamp(22px,5vw,30px)}
+    .photo-day-head p{margin:5px 0 0;color:#8da2b7;font-size:14px}
+    .photo-day-close{flex:0 0 auto;width:48px;height:48px;border:1px solid rgba(91,207,255,.35);border-radius:15px;color:#eaf8ff;background:rgba(23,39,56,.78);font-size:25px;cursor:pointer}
+    .photo-day-list{display:grid;gap:10px;max-height:calc(min(760px,88vh) - 118px);overflow:auto;padding:14px}
+    .photo-day-option{width:100%;display:grid;grid-template-columns:48px 1fr 24px;align-items:center;gap:12px;min-height:68px;padding:10px 13px;border:1px solid rgba(87,181,233,.18);border-radius:17px;color:#edf8ff;text-align:left;background:rgba(11,27,45,.78);cursor:pointer;transition:transform .16s ease,border-color .16s ease,background .16s ease}
+    .photo-day-option:hover,.photo-day-option:focus-visible{transform:translateY(-2px);border-color:rgba(87,207,255,.62);background:rgba(18,43,67,.92);outline:none}
+    .photo-day-icon{display:grid;place-items:center;width:48px;height:48px;border-radius:14px;background:linear-gradient(145deg,rgba(60,188,255,.2),rgba(95,83,255,.15));font-size:24px}
+    .photo-day-text{min-width:0;display:grid;gap:4px}.photo-day-text b{overflow:hidden;color:#f4fbff;font-size:15px;text-overflow:ellipsis;white-space:nowrap}.photo-day-text small{color:#8ea5ba;font-size:13px}
+    .photo-day-arrow{color:#66d9ff;font-size:30px;line-height:1}.photo-day-empty{padding:34px 16px;color:#91a6ba;text-align:center}
+    @keyframes photoDayFade{from{opacity:0}to{opacity:1}}@keyframes photoDayPop{from{opacity:0;transform:translateY(10px) scale(.97)}to{opacity:1;transform:translateY(0) scale(1)}}
+    @media(max-width:520px){.photo-day-overlay{padding:12px}.photo-day-dialog{border-radius:21px}.photo-day-head{padding:17px 15px 14px}.photo-day-list{padding:11px}.photo-day-option{min-height:64px}}
+    @media(prefers-reduced-motion:reduce){.photo-day-overlay,.photo-day-dialog{animation:none}.photo-day-option{transition:none}}
+  `;
+  document.head.appendChild(style);
+})();
 
 // ============================================================
 // INICIO
