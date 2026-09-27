@@ -304,6 +304,8 @@ async function deleteFile(file) {
       );
     }
 
+    refreshMediaResultsOverlay();
+
     log("Archivo eliminado correctamente", { name });
 
   } catch (error) {
@@ -812,7 +814,9 @@ function createFileElement(file) {
 
   element.className =
     "file mediafile-file" +
-    (document.getElementById("photoResultsOverlay") ? " photo-results-file" : "");
+    ((document.getElementById("photoResultsOverlay") || document.getElementById("mediaResultsOverlay"))
+      ? " photo-results-file"
+      : "");
 
 
   element.innerHTML = `
@@ -1323,6 +1327,110 @@ function openPhotoDayMenu() {
   });
 }
 
+
+// ============================================================
+// VISOR FLOTANTE UNIFICADO PARA CUALQUIER CATEGORÍA
+// Misma presentación visual de Fotos para Videos, Comprobantes y Todos.
+// ============================================================
+
+function getCategoryFiles(filter) {
+  if (filter === "all") return [...allFiles];
+  if (filter === "receipt") return getReceiptFiles();
+  return allFiles.filter(file => fileKind(file) === filter);
+}
+
+function categoryLabel(filter) {
+  if (filter === "video") return "Videos";
+  if (filter === "receipt") return "Comprobantes";
+  if (filter === "audio") return "Audios";
+  if (filter === "pdf") return "PDF";
+  if (filter === "image") return "Fotos";
+  return "Todos los archivos";
+}
+
+function categoryIcon(filter) {
+  if (filter === "video") return "🎬";
+  if (filter === "receipt") return "🧾";
+  if (filter === "audio") return "🎵";
+  if (filter === "pdf") return "📕";
+  if (filter === "image") return "🖼️";
+  return "📁";
+}
+
+function closeMediaResults() {
+  document.getElementById("mediaResultsOverlay")?.remove();
+}
+
+function renderMediaResultsGrid(overlay, files, emptyText) {
+  const grid = overlay?.querySelector(".photo-results-grid");
+  if (!grid) return;
+  grid.innerHTML = "";
+  if (!files.length) {
+    grid.innerHTML = `<div class="photo-results-empty">${escapeHtml(emptyText || "No hay archivos para mostrar.")}</div>`;
+    return;
+  }
+  files.forEach(file => grid.appendChild(createFileElement(file)));
+}
+
+function openMediaResults(filter = activeFilter) {
+  closeMediaResults();
+  closePhotoResults();
+  closePhotoDayMenu();
+
+  const files = getCategoryFiles(filter);
+  const label = categoryLabel(filter);
+  const icon = categoryIcon(filter);
+  const overlay = document.createElement("div");
+  overlay.id = "mediaResultsOverlay";
+  overlay.className = "photo-results-overlay media-results-overlay";
+  overlay.dataset.filter = filter;
+
+  overlay.innerHTML = `
+    <div class="photo-results-dialog" role="dialog" aria-modal="true" aria-label="${escapeHtml(label)}">
+      <div class="photo-results-head">
+        <div class="photo-results-head-main">
+          <span class="photo-results-eyebrow">CARPETA · ${escapeHtml(label.toUpperCase())}</span>
+          <h2>${icon} ${escapeHtml(label)}</h2>
+          <p>${files.length} ${files.length === 1 ? "archivo almacenado" : "archivos almacenados"}</p>
+        </div>
+        <button class="photo-results-close" type="button" aria-label="Cerrar">✕</button>
+      </div>
+      <div class="photo-results-toolbar">
+        <button class="photo-results-back" type="button">← Categorías</button>
+        <span>${files.length} ${files.length === 1 ? "archivo" : "archivos"}</span>
+      </div>
+      <div class="photo-results-grid"></div>
+    </div>`;
+
+  document.body.appendChild(overlay);
+  renderMediaResultsGrid(overlay, files, `No hay ${label.toLowerCase()} para mostrar.`);
+
+  overlay.querySelector(".photo-results-close")?.addEventListener("click", closeMediaResults);
+  overlay.addEventListener("click", event => {
+    if (event.target === overlay) closeMediaResults();
+  });
+  overlay.querySelector(".photo-results-back")?.addEventListener("click", () => {
+    closeMediaResults();
+  });
+
+  log("Ventana de archivos abierta", { categoria: label, total: files.length });
+}
+
+function refreshMediaResultsOverlay() {
+  const overlay = document.getElementById("mediaResultsOverlay");
+  if (!overlay) return;
+  const filter = overlay.dataset.filter || "all";
+  const files = getCategoryFiles(filter);
+  const title = overlay.querySelector(".photo-results-head h2");
+  const subtitle = overlay.querySelector(".photo-results-head p");
+  const toolbar = overlay.querySelector(".photo-results-toolbar span");
+  const label = categoryLabel(filter);
+  if (title) title.textContent = `${categoryIcon(filter)} ${label}`;
+  if (subtitle) subtitle.textContent = `${files.length} ${files.length === 1 ? "archivo almacenado" : "archivos almacenados"}`;
+  if (toolbar) toolbar.textContent = `${files.length} ${files.length === 1 ? "archivo" : "archivos"}`;
+  renderMediaResultsGrid(overlay, files, `No hay ${label.toLowerCase()} para mostrar.`);
+}
+
 // ============================================================
 // RENDERIZAR ARCHIVOS
 // ============================================================
@@ -1694,25 +1802,7 @@ document
           activePhotoDay = null;
 
           renderFiles();
-
-          if (activeFilter === "receipt") {
-            log("Comprobantes abiertos", {
-              total: getReceiptFiles().length
-            });
-          }
-
-          const panel =
-            document.querySelector(
-              ".panel"
-            );
-
-          if (panel) {
-
-            panel.scrollIntoView({
-              behavior:
-                "smooth"
-            });
-          }
+          openMediaResults(requestedFilter);
         }
       );
     }
