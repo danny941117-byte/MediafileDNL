@@ -282,6 +282,7 @@ async function deleteFile(file) {
 
     renderFiles();
     renderGallery();
+    updateReceiptCard();
 
     log("Archivo eliminado correctamente", { name });
 
@@ -338,6 +339,26 @@ function normalizeFiles(data) {
 }
 
 
+
+// ============================================================
+// COMPROBANTES
+// ============================================================
+
+function isReceiptFile(file) {
+  const name = getFileName(file).toLowerCase();
+  const type = String(getContentType(file)).toLowerCase();
+
+  return (
+    /comprobante|comprobantes|recibo|recibos|receipt|factura|facturas|ticket|tickets|voucher|pago|pagos/.test(name) ||
+    type === "application/pdf"
+  );
+}
+
+function getReceiptFiles() {
+  return allFiles.filter(isReceiptFile);
+}
+
+
 // ============================================================
 // FILTROS
 // ============================================================
@@ -345,6 +366,10 @@ function normalizeFiles(data) {
 function matchesFilter(file) {
   if (activeFilter === "all") {
     return true;
+  }
+
+  if (activeFilter === "receipt") {
+    return isReceiptFile(file);
   }
 
   return (
@@ -1100,7 +1125,9 @@ function renderFiles() {
             ? "Audios"
             : activeFilter === "pdf"
               ? "PDF"
-              : "Todos los archivos";
+              : activeFilter === "receipt"
+                ? "Comprobantes"
+                : "Todos los archivos";
   }
 
 
@@ -1374,6 +1401,19 @@ async function uploadFiles(files) {
 }
 
 
+
+function updateReceiptCard() {
+  const card = document.querySelector('.card[data-filter="receipt"]');
+  if (!card) return;
+
+  const small = card.querySelector("small");
+  if (!small) return;
+
+  const total = getReceiptFiles().length;
+  small.textContent =
+    `${total} ${total === 1 ? "comprobante" : "comprobantes"}`;
+}
+
 // ============================================================
 // TARJETAS PRINCIPALES
 // ============================================================
@@ -1394,6 +1434,12 @@ document
             "all";
 
           renderFiles();
+
+          if (activeFilter === "receipt") {
+            log("Comprobantes abiertos", {
+              total: getReceiptFiles().length
+            });
+          }
 
           const panel =
             document.querySelector(

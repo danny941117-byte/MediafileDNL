@@ -468,3 +468,23 @@ body.video-open{
   .video-prev{left:7px}
   .video-next{right:7px}
 }
+
+/* ============================================================
+   COMPROBANTES — v1.9.0
+   ============================================================ */
+
+.card[data-filter="receipt"]{
+  position:relative;
+}
+
+.card[data-filter="receipt"]::after{
+  content:"";
+  position:absolute;
+  top:9px;
+  right:9px;
+  width:7px;
+  height:7px;
+  border-radius:50%;
+  background:#5ad99a;
+  box-shadow:0 0 10px rgba(90,217,154,.35);
+}
