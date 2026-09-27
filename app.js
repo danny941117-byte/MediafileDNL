@@ -19,7 +19,7 @@ if (document.readyState === "loading") {
 
 const CONFIG = {
   API_URL: "https://m-e2a5ediafile-dnl.danny941117.workers.dev",
-  VERSION: "1.9.3",
+  VERSION: "2.0.0",
   // Capacidad de referencia del almacenamiento B2 gratuito que estamos usando.
   // Si el bucket tiene otra capacidad, cambia solamente este valor.
   STORAGE_LIMIT_BYTES: 10 * 1024 * 1024 * 1024
@@ -1032,8 +1032,9 @@ function createFileElement(file) {
       document.createElement("video");
 
     video.src = getFileUrl(file);
-    video.muted = true;
+    video.muted = false;
     video.playsInline = true;
+    video.controls = true;
     video.preload = "metadata";
 
     video.style.cssText = `
@@ -1042,17 +1043,34 @@ function createFileElement(file) {
       object-fit:cover;
       display:block;
       background:#000;
-      pointer-events:none;
+      pointer-events:auto;
     `;
 
     thumbButton.innerHTML = "";
     thumbButton.appendChild(video);
 
-    // Tocar directamente la miniatura del video también abre el visor.
+    // IMPORTANTE: reproducir directamente en el navegador.
+    // No abrimos otra ventana ni usamos Blob. El toque del usuario
+    // llega directamente al elemento <video>, lo que permite a
+    // Android/Chrome iniciar la reproducción con la interacción.
     video.addEventListener("click", (event) => {
-      event.preventDefault();
       event.stopPropagation();
-      openVideoLightbox(file);
+    });
+
+    video.addEventListener("play", () => {
+      log("Video reproduciéndose en navegador", {
+        name: getFileName(file),
+        url: getFileUrl(file)
+      });
+    });
+
+    video.addEventListener("error", () => {
+      log("ERROR REPRODUCIENDO VIDEO EN MINIATURA", {
+        name: getFileName(file),
+        src: video.currentSrc || video.src,
+        code: video.error?.code || null,
+        message: video.error?.message || "El navegador no pudo reproducir el video."
+      });
     });
 
     const badge =
@@ -1064,15 +1082,17 @@ function createFileElement(file) {
       left:50%;
       top:50%;
       transform:translate(-50%,-50%);
-      width:34px;
-      height:34px;
+      width:44px;
+      height:44px;
       border-radius:50%;
       display:flex;
       align-items:center;
       justify-content:center;
       background:rgba(0,0,0,.72);
       color:white;
-      font-size:16px;
+      font-size:20px;
+      pointer-events:none;
+      z-index:2;
     `;
 
     thumbButton.appendChild(badge);
@@ -2232,101 +2252,131 @@ async function renderVideoLightbox() {
   const next = $("#videoLightboxNext");
   const token = ++videoLoadToken;
 
-  if (title) title.textContent = getFileName(file);
-  if (counter) {
-    counter.textContent = `${videoIndex + 1} / ${videoFiles.length}`;
-  }
+  if (!player) return;
 
+  if (title) title.textContent = getFileName(file);
+  if (counter) counter.textContent = `${videoIndex + 1} / ${videoFiles.length}`;
   if (prev) prev.disabled = videoFiles.length <= 1;
   if (next) next.disabled = videoFiles.length <= 1;
 
   releaseVideoBlob();
-
-  if (!player) return;
 
   try { player.pause(); } catch (_) {}
   player.removeAttribute("src");
   player.load();
   player.style.width = "";
   player.style.height = "";
-
-  // El Worker puede entregar el archivo sin soporte completo de Range.
-  // En ese caso Android muestra la miniatura pero no inicia la reproducción.
-  // Descargamos el video como Blob y se lo damos al reproductor localmente.
-  player.setAttribute("aria-busy", "true");
   player.dataset.loading = "true";
+  player.removeAttribute("aria-busy");
 
-  log("Preparando video para reproducción", {
+  const url = getFileUrl(file);
+
+  log("Preparando video", {
     name: getFileName(file),
-    url: getFileUrl(file)
+    url,
+    modo: "reproducción con Range + respaldo Blob"
   });
 
-  try {
-    const response = await fetch(getFileUrl(file), {
-      method: "GET",
-      mode: "cors",
-      credentials: "omit",
-      cache: "no-store"
+  // PRIMER INTENTO: fuente directa.
+  // Es la forma correcta para videos porque Chrome/Android puede pedir
+  // solamente los bytes que necesita mediante HTTP Range.
+  let fallbackStarted = false;
+  let fallbackTimer = null;
+
+  const cleanup = () => {
+    if (fallbackTimer) {
+      clearTimeout(fallbackTimer);
+      fallbackTimer = null;
+    }
+  };
+
+  const useBlobFallback = async (reason) => {
+    if (fallbackStarted || token !== videoLoadToken) return;
+    fallbackStarted = true;
+    cleanup();
+
+    log("Video: usando respaldo Blob", {
+      name: getFileName(file),
+      motivo: reason || "fuente directa no disponible"
     });
 
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
-    }
+    try {
+      const response = await fetch(url, {
+        method: "GET",
+        mode: "cors",
+        credentials: "omit",
+        cache: "no-store"
+      });
 
-    const sourceBlob = await response.blob();
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
-    if (!sourceBlob.size) {
-      throw new Error("El archivo de video llegó vacío.");
-    }
-
-    if (token !== videoLoadToken) return;
-
-    const responseType = response.headers.get("content-type") || "";
-    const fileType = getContentType(file);
-    const finalType = responseType.startsWith("video/")
-      ? responseType
-      : (fileType.startsWith("video/") ? fileType : "video/mp4");
-
-    const playableBlob = sourceBlob.type === finalType
-      ? sourceBlob
-      : new Blob([sourceBlob], { type: finalType });
-
-    videoBlobUrl = URL.createObjectURL(playableBlob);
-    player.src = videoBlobUrl;
-    player.load();
-
-    player.addEventListener("loadedmetadata", () => {
+      const sourceBlob = await response.blob();
+      if (!sourceBlob.size) throw new Error("El archivo de video llegó vacío.");
       if (token !== videoLoadToken) return;
-      fitFloatingVideo();
-    }, { once: true });
 
-    player.addEventListener("canplay", () => {
-      if (token !== videoLoadToken) return;
+      const responseType = response.headers.get("content-type") || "";
+      const fileType = String(getContentType(file) || "").toLowerCase();
+      const finalType = responseType.startsWith("video/")
+        ? responseType
+        : (fileType.startsWith("video/") ? fileType : "video/mp4");
+
+      const playableBlob = sourceBlob.type === finalType
+        ? sourceBlob
+        : new Blob([sourceBlob], { type: finalType });
+
+      releaseVideoBlob();
+      videoBlobUrl = URL.createObjectURL(playableBlob);
+      player.src = videoBlobUrl;
+      player.load();
       player.dataset.loading = "false";
-      player.removeAttribute("aria-busy");
-      log("Video listo para reproducir", {
+
+      log("Video cargado como Blob", {
         name: getFileName(file),
         bytes: sourceBlob.size,
         type: finalType
       });
-    }, { once: true });
+    } catch (error) {
+      if (token !== videoLoadToken) return;
+      player.dataset.loading = "false";
+      log("ERROR FINAL DE VIDEO", {
+        name: getFileName(file),
+        message: error?.message || String(error),
+        code: player.error?.code || null
+      });
+    }
+  };
 
-  } catch (error) {
+  const onLoadedMetadata = () => {
     if (token !== videoLoadToken) return;
-
+    cleanup();
     player.dataset.loading = "false";
-    player.removeAttribute("aria-busy");
-
-    // Último intento: fuente directa. Esto permite reproducir servidores
-    // que sí soportan Range aunque el fetch CORS esté bloqueado.
-    player.src = getFileUrl(file);
-    player.load();
-
-    log("FALLÓ CARGA BLOB; intentando fuente directa", {
+    fitFloatingVideo();
+    log("Video listo", {
       name: getFileName(file),
-      message: error?.message || String(error)
+      width: player.videoWidth,
+      height: player.videoHeight,
+      duration: Number.isFinite(player.duration) ? player.duration : null
     });
-  }
+  };
+
+  const onError = () => {
+    if (token !== videoLoadToken) return;
+    useBlobFallback("error del reproductor");
+  };
+
+  player.addEventListener("loadedmetadata", onLoadedMetadata, { once: true });
+  player.addEventListener("error", onError, { once: true });
+
+  player.src = url;
+  player.load();
+
+  // Si el Worker entrega el archivo pero no responde correctamente a Range,
+  // no dejamos al usuario esperando indefinidamente.
+  fallbackTimer = setTimeout(() => {
+    if (token === videoLoadToken && player.readyState < 1) {
+      useBlobFallback("timeout esperando metadata");
+    }
+  }, 7000);
 
   requestAnimationFrame(fitFloatingVideo);
 }
