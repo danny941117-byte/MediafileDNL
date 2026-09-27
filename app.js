@@ -19,10 +19,7 @@ if (document.readyState === "loading") {
 
 const CONFIG = {
   API_URL: "https://m-e2a5ediafile-dnl.danny941117.workers.dev",
-  VERSION: "2.0.6",
-  // Capacidad de referencia del almacenamiento B2 gratuito que estamos usando.
-  // Si el bucket tiene otra capacidad, cambia solamente este valor.
-  STORAGE_LIMIT_BYTES: 10 * 1024 * 1024 * 1024
+  VERSION: "1.6.1"
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -289,7 +286,6 @@ async function deleteFile(file) {
     renderFiles();
     renderGallery();
     updateReceiptCard();
-    updateStorageInfo();
 
     const photoResults = document.getElementById("photoResultsOverlay");
     if (photoResults) {
@@ -307,8 +303,6 @@ async function deleteFile(file) {
         currentTitle === "Todas las fotos" ? null : activePhotoDay
       );
     }
-
-    refreshMediaResultsOverlay();
 
     log("Archivo eliminado correctamente", { name });
 
@@ -818,9 +812,7 @@ function createFileElement(file) {
 
   element.className =
     "file mediafile-file" +
-    ((document.getElementById("photoResultsOverlay") || document.getElementById("mediaResultsOverlay"))
-      ? " photo-results-file"
-      : "");
+    (document.getElementById("photoResultsOverlay") ? " photo-results-file" : "");
 
 
   element.innerHTML = `
@@ -1032,9 +1024,8 @@ function createFileElement(file) {
       document.createElement("video");
 
     video.src = getFileUrl(file);
-    video.muted = false;
+    video.muted = true;
     video.playsInline = true;
-    video.controls = true;
     video.preload = "metadata";
 
     video.style.cssText = `
@@ -1043,36 +1034,40 @@ function createFileElement(file) {
       object-fit:cover;
       display:block;
       background:#000;
-      pointer-events:auto;
+      pointer-events:none;
     `;
 
     thumbButton.innerHTML = "";
     thumbButton.appendChild(video);
 
-    // IMPORTANTE: reproducir directamente en el navegador.
-    // No abrimos otra ventana ni usamos Blob. El toque del usuario
-    // llega directamente al elemento <video>, lo que permite a
-    // Android/Chrome iniciar la reproducción con la interacción.
+    // Tocar directamente la miniatura del video también abre el visor.
     video.addEventListener("click", (event) => {
+      event.preventDefault();
       event.stopPropagation();
+      openVideoLightbox(file);
     });
 
-    video.addEventListener("play", () => {
-      log("Video reproduciéndose en navegador", {
-        name: getFileName(file),
-        url: getFileUrl(file)
-      });
-    });
+    const badge =
+      document.createElement("span");
 
-    video.addEventListener("error", () => {
-      log("ERROR REPRODUCIENDO VIDEO EN MINIATURA", {
-        name: getFileName(file),
-        src: video.currentSrc || video.src,
-        code: video.error?.code || null,
-        message: video.error?.message || "El navegador no pudo reproducir el video."
-      });
-    });
+    badge.textContent = "▶";
+    badge.style.cssText = `
+      position:absolute;
+      left:50%;
+      top:50%;
+      transform:translate(-50%,-50%);
+      width:34px;
+      height:34px;
+      border-radius:50%;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      background:rgba(0,0,0,.72);
+      color:white;
+      font-size:16px;
+    `;
 
+    thumbButton.appendChild(badge);
 
   } else {
 
@@ -1328,182 +1323,6 @@ function openPhotoDayMenu() {
   });
 }
 
-
-// ============================================================
-// VISOR FLOTANTE UNIFICADO PARA CUALQUIER CATEGORÍA
-// Misma presentación visual de Fotos para Videos, Comprobantes y Todos.
-// ============================================================
-
-function getCategoryFiles(filter) {
-  if (filter === "all") return [...allFiles];
-  if (filter === "receipt") return getReceiptFiles();
-  return allFiles.filter(file => fileKind(file) === filter);
-}
-
-function categoryLabel(filter) {
-  if (filter === "video") return "Videos";
-  if (filter === "receipt") return "Comprobantes";
-  if (filter === "audio") return "Audios";
-  if (filter === "pdf") return "PDF";
-  if (filter === "image") return "Fotos";
-  return "Todos los archivos";
-}
-
-function categoryIcon(filter) {
-  if (filter === "video") return "🎬";
-  if (filter === "receipt") return "🧾";
-  if (filter === "audio") return "🎵";
-  if (filter === "pdf") return "📕";
-  if (filter === "image") return "🖼️";
-  return "📁";
-}
-
-function closeMediaResults() {
-  document.getElementById("mediaResultsOverlay")?.remove();
-}
-
-function createMediaThumbCard(file) {
-  const kind = fileKind(file);
-  const name = getFileName(file);
-  const type = getContentType(file);
-  const size = formatBytes(file?.contentLength ?? file?.size ?? file?.tamañoBytes);
-
-  const card = document.createElement("button");
-  card.type = "button";
-  card.className = "media-thumb-card";
-  card.setAttribute("aria-label", `Abrir ${name}`);
-
-  const thumb = document.createElement("div");
-  thumb.className = "media-thumb-image";
-
-  if (kind === "image") {
-    const img = document.createElement("img");
-    img.src = getFileUrl(file);
-    img.alt = name;
-    img.loading = "lazy";
-    img.decoding = "async";
-    thumb.appendChild(img);
-    img.addEventListener("error", () => {
-      thumb.innerHTML = '<span class="media-thumb-fallback">🖼️</span>';
-    });
-  } else if (kind === "video") {
-    const video = document.createElement("video");
-    video.src = getFileUrl(file);
-    video.muted = true;
-    video.playsInline = true;
-    video.controls = false;
-    video.preload = "metadata";
-    video.setAttribute("aria-hidden", "true");
-    video.style.pointerEvents = "none";
-    thumb.appendChild(video);
-
-    const playBadge = document.createElement("span");
-    playBadge.className = "media-thumb-play";
-    playBadge.textContent = "▶";
-    thumb.appendChild(playBadge);
-
-    video.addEventListener("error", () => {
-      video.remove();
-      playBadge.textContent = "🎬";
-    });
-  } else if (kind === "pdf" || type === "application/pdf") {
-    thumb.innerHTML = '<span class="media-thumb-icon">📕</span>';
-  } else {
-    thumb.innerHTML = `<span class="media-thumb-icon">${getIcon(file)}</span>`;
-  }
-
-  const info = document.createElement("div");
-  info.className = "media-thumb-info";
-  const title = document.createElement("div");
-  title.className = "media-thumb-name";
-  title.textContent = name;
-  title.title = name;
-  const meta = document.createElement("div");
-  meta.className = "media-thumb-meta";
-  meta.textContent = `${type} · ${size}`;
-  info.append(title, meta);
-  card.append(thumb, info);
-
-  card.addEventListener("click", (event) => {
-    event.preventDefault();
-    if (kind === "image") openImageLightbox(file);
-    else if (kind === "video") openVideoLightbox(file);
-    else previewFile(file);
-  });
-
-  return card;
-}
-
-function renderMediaResultsGrid(overlay, files, emptyText) {
-  const grid = overlay?.querySelector(".media-results-grid");
-  if (!grid) return;
-  grid.innerHTML = "";
-  if (!files.length) {
-    grid.innerHTML = `<div class="photo-results-empty">${escapeHtml(emptyText || "No hay archivos para mostrar.")}</div>`;
-    return;
-  }
-  files.forEach(file => grid.appendChild(createMediaThumbCard(file)));
-}
-
-function openMediaResults(filter = activeFilter) {
-  closeMediaResults();
-  closePhotoResults();
-  closePhotoDayMenu();
-
-  const files = getCategoryFiles(filter);
-  const label = categoryLabel(filter);
-  const icon = categoryIcon(filter);
-  const overlay = document.createElement("div");
-  overlay.id = "mediaResultsOverlay";
-  overlay.className = "photo-results-overlay media-results-overlay";
-  overlay.dataset.filter = filter;
-
-  overlay.innerHTML = `
-    <div class="photo-results-dialog" role="dialog" aria-modal="true" aria-label="${escapeHtml(label)}">
-      <div class="photo-results-head">
-        <div class="photo-results-head-main">
-          <span class="photo-results-eyebrow">CARPETA · ${escapeHtml(label.toUpperCase())}</span>
-          <h2>${icon} ${escapeHtml(label)}</h2>
-          <p>${files.length} ${files.length === 1 ? "archivo almacenado" : "archivos almacenados"}</p>
-        </div>
-        <button class="photo-results-close" type="button" aria-label="Cerrar">✕</button>
-      </div>
-      <div class="photo-results-toolbar">
-        <button class="photo-results-back" type="button">← Categorías</button>
-        <span>${files.length} ${files.length === 1 ? "archivo" : "archivos"}${files.length > 1 ? " · desliza para ver más" : ""}</span>
-      </div>
-      <div class="media-results-grid"></div>
-    </div>`;
-
-  document.body.appendChild(overlay);
-  renderMediaResultsGrid(overlay, files, `No hay ${label.toLowerCase()} para mostrar.`);
-
-  overlay.querySelector(".photo-results-close")?.addEventListener("click", closeMediaResults);
-  overlay.addEventListener("click", event => {
-    if (event.target === overlay) closeMediaResults();
-  });
-  overlay.querySelector(".photo-results-back")?.addEventListener("click", () => {
-    closeMediaResults();
-  });
-
-  log("Ventana de archivos abierta", { categoria: label, total: files.length });
-}
-
-function refreshMediaResultsOverlay() {
-  const overlay = document.getElementById("mediaResultsOverlay");
-  if (!overlay) return;
-  const filter = overlay.dataset.filter || "all";
-  const files = getCategoryFiles(filter);
-  const title = overlay.querySelector(".photo-results-head h2");
-  const subtitle = overlay.querySelector(".photo-results-head p");
-  const toolbar = overlay.querySelector(".photo-results-toolbar span");
-  const label = categoryLabel(filter);
-  if (title) title.textContent = `${categoryIcon(filter)} ${label}`;
-  if (subtitle) subtitle.textContent = `${files.length} ${files.length === 1 ? "archivo almacenado" : "archivos almacenados"}`;
-  if (toolbar) toolbar.textContent = `${files.length} ${files.length === 1 ? "archivo" : "archivos"}`;
-  renderMediaResultsGrid(overlay, files, `No hay ${label.toLowerCase()} para mostrar.`);
-}
-
 // ============================================================
 // RENDERIZAR ARCHIVOS
 // ============================================================
@@ -1582,77 +1401,6 @@ function renderFiles() {
       );
     }
   );
-}
-
-
-// ============================================================
-// ALMACENAMIENTO
-// ============================================================
-
-function getStoredBytes() {
-  return allFiles.reduce((total, file) => {
-    const value = Number(
-      file?.contentLength ??
-      file?.size ??
-      file?.tamañoBytes ??
-      0
-    );
-    return total + (Number.isFinite(value) && value > 0 ? value : 0);
-  }, 0);
-}
-
-function formatStorageBytes(bytes) {
-  if (!Number.isFinite(bytes) || bytes < 0) return "0 B";
-  if (bytes < 1024) return `${Math.round(bytes)} B`;
-  if (bytes < 1024 ** 2) return `${(bytes / 1024).toFixed(1)} KB`;
-  if (bytes < 1024 ** 3) return `${(bytes / 1024 ** 2).toFixed(2)} MB`;
-  return `${(bytes / 1024 ** 3).toFixed(2)} GB`;
-}
-
-function updateStorageInfo() {
-  const used = getStoredBytes();
-  const limit = Number(CONFIG.STORAGE_LIMIT_BYTES) || 0;
-  const free = Math.max(0, limit - used);
-  const percent = limit > 0 ? Math.min(100, (used / limit) * 100) : 0;
-
-  let card = document.getElementById("mediafileStorageCard");
-  if (!card) {
-    const hero = document.querySelector(".hero");
-    if (!hero) return;
-
-    card = document.createElement("div");
-    card.id = "mediafileStorageCard";
-    card.style.cssText = `
-      margin-top:16px;
-      padding:13px 14px;
-      border:1px solid rgba(82,216,255,.18);
-      border-radius:16px;
-      background:rgba(3,12,22,.55);
-    `;
-    hero.appendChild(card);
-  }
-
-  card.innerHTML = `
-    <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;">
-      <div>
-        <div style="color:#52d8ff;font-size:10px;font-weight:800;letter-spacing:1.5px;">ALMACENAMIENTO</div>
-        <div style="color:#edf7ff;font-size:13px;font-weight:700;margin-top:3px;">${formatStorageBytes(free)} disponibles</div>
-      </div>
-      <div style="text-align:right;color:#89a7bb;font-size:10px;line-height:1.45;">
-        Usado: ${formatStorageBytes(used)}<br>
-        Capacidad: ${formatStorageBytes(limit)}
-      </div>
-    </div>
-    <div style="height:6px;margin-top:10px;border-radius:99px;background:rgba(255,255,255,.07);overflow:hidden;">
-      <div style="height:100%;width:${percent.toFixed(2)}%;border-radius:99px;background:linear-gradient(90deg,#52d8ff,#8a6cff);transition:width .3s ease;"></div>
-    </div>`;
-
-  log("Almacenamiento actualizado", {
-    usadoBytes: used,
-    disponibleBytes: free,
-    capacidadBytes: limit,
-    porcentajeUsado: Number(percent.toFixed(2))
-  });
 }
 
 
@@ -1742,7 +1490,6 @@ async function loadFiles() {
 
 
     renderFiles();
-    updateStorageInfo();
 
 
     setConnection(
@@ -1756,7 +1503,6 @@ async function loadFiles() {
     allFiles = [];
 
     renderFiles();
-    updateStorageInfo();
 
 
     setConnection(
@@ -1948,7 +1694,25 @@ document
           activePhotoDay = null;
 
           renderFiles();
-          openMediaResults(requestedFilter);
+
+          if (activeFilter === "receipt") {
+            log("Comprobantes abiertos", {
+              total: getReceiptFiles().length
+            });
+          }
+
+          const panel =
+            document.querySelector(
+              ".panel"
+            );
+
+          if (panel) {
+
+            panel.scrollIntoView({
+              behavior:
+                "smooth"
+            });
+          }
         }
       );
     }
@@ -2036,8 +1800,6 @@ let videoFiles = [];
 let videoIndex = 0;
 let videoResizeBound = false;
 let videoMetadataBound = false;
-let videoBlobUrl = null;
-let videoLoadToken = 0;
 
 function refreshVideoFiles() {
   videoFiles = allFiles.filter(file => fileKind(file) === "video");
@@ -2057,7 +1819,7 @@ function ensureFloatingVideoStyles() {
     #videoLightbox.video-lightbox {
       position: fixed !important;
       inset: 0 !important;
-      z-index: 100500 !important;
+      z-index: 99990 !important;
       display: grid !important;
       place-items: center !important;
       padding: max(12px, env(safe-area-inset-top))
@@ -2223,16 +1985,6 @@ function bindFloatingVideoEvents() {
 }
 
 function openVideoLightbox(file) {
-  // El reproductor debe quedar POR ENCIMA de cualquier ventana flotante
-  // de Fotos/Videos/Comprobantes. Si quedó abierto un visor anterior,
-  // lo cerramos para evitar que tape el reproductor.
-  document.querySelectorAll(".mediafile-modal").forEach(modal => {
-    try { modal.remove(); } catch (_) {}
-  });
-
-  const imageLightbox = $("#imageLightbox");
-  if (imageLightbox) imageLightbox.hidden = true;
-
   refreshVideoFiles();
   ensureFloatingVideoStyles();
   bindFloatingVideoEvents();
@@ -2262,24 +2014,13 @@ function openVideoLightbox(file) {
   });
 }
 
-function releaseVideoBlob() {
-  if (videoBlobUrl) {
-    try { URL.revokeObjectURL(videoBlobUrl); } catch (_) {}
-    videoBlobUrl = null;
-  }
-}
-
 function closeVideoLightbox() {
-  videoLoadToken++;
   const box = $("#videoLightbox");
   const player = $("#videoLightboxPlayer");
-
-  releaseVideoBlob();
 
   if (player) {
     try { player.pause(); } catch (_) {}
     player.removeAttribute("src");
-    player.removeAttribute("poster");
     player.load();
     player.style.width = "";
     player.style.height = "";
@@ -2292,7 +2033,7 @@ function closeVideoLightbox() {
   document.body.classList.remove("video-open");
 }
 
-async function renderVideoLightbox() {
+function renderVideoLightbox() {
   refreshVideoFiles();
 
   if (!videoFiles.length) {
@@ -2309,136 +2050,28 @@ async function renderVideoLightbox() {
   const counter = $("#videoLightboxCounter");
   const prev = $("#videoLightboxPrev");
   const next = $("#videoLightboxNext");
-  const token = ++videoLoadToken;
-
-  if (!player) return;
 
   if (title) title.textContent = getFileName(file);
-  if (counter) counter.textContent = `${videoIndex + 1} / ${videoFiles.length}`;
+  if (counter) {
+    counter.textContent = `${videoIndex + 1} / ${videoFiles.length}`;
+  }
+
   if (prev) prev.disabled = videoFiles.length <= 1;
   if (next) next.disabled = videoFiles.length <= 1;
 
-  releaseVideoBlob();
-
-  try { player.pause(); } catch (_) {}
-  player.removeAttribute("src");
-  player.load();
-  player.style.width = "";
-  player.style.height = "";
-  player.dataset.loading = "true";
-  player.removeAttribute("aria-busy");
-
-  const url = getFileUrl(file);
-
-  log("Preparando video", {
-    name: getFileName(file),
-    url,
-    modo: "reproducción con Range + respaldo Blob"
-  });
-
-  // PRIMER INTENTO: fuente directa.
-  // Es la forma correcta para videos porque Chrome/Android puede pedir
-  // solamente los bytes que necesita mediante HTTP Range.
-  let fallbackStarted = false;
-  let fallbackTimer = null;
-
-  const cleanup = () => {
-    if (fallbackTimer) {
-      clearTimeout(fallbackTimer);
-      fallbackTimer = null;
-    }
-  };
-
-  const useBlobFallback = async (reason) => {
-    if (fallbackStarted || token !== videoLoadToken) return;
-    fallbackStarted = true;
-    cleanup();
-
-    log("Video: usando respaldo Blob", {
-      name: getFileName(file),
-      motivo: reason || "fuente directa no disponible"
-    });
-
-    try {
-      const response = await fetch(url, {
-        method: "GET",
-        mode: "cors",
-        credentials: "omit",
-        cache: "no-store"
-      });
-
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-      const sourceBlob = await response.blob();
-      if (!sourceBlob.size) throw new Error("El archivo de video llegó vacío.");
-      if (token !== videoLoadToken) return;
-
-      const responseType = response.headers.get("content-type") || "";
-      const fileType = String(getContentType(file) || "").toLowerCase();
-      const finalType = responseType.startsWith("video/")
-        ? responseType
-        : (fileType.startsWith("video/") ? fileType : "video/mp4");
-
-      const playableBlob = sourceBlob.type === finalType
-        ? sourceBlob
-        : new Blob([sourceBlob], { type: finalType });
-
-      releaseVideoBlob();
-      videoBlobUrl = URL.createObjectURL(playableBlob);
-      player.src = videoBlobUrl;
-      player.load();
-      player.dataset.loading = "false";
-
-      log("Video cargado como Blob", {
-        name: getFileName(file),
-        bytes: sourceBlob.size,
-        type: finalType
-      });
-    } catch (error) {
-      if (token !== videoLoadToken) return;
-      player.dataset.loading = "false";
-      log("ERROR FINAL DE VIDEO", {
-        name: getFileName(file),
-        message: error?.message || String(error),
-        code: player.error?.code || null
-      });
-    }
-  };
-
-  const onLoadedMetadata = () => {
-    if (token !== videoLoadToken) return;
-    cleanup();
-    player.dataset.loading = "false";
-    fitFloatingVideo();
-    log("Video listo", {
-      name: getFileName(file),
-      width: player.videoWidth,
-      height: player.videoHeight,
-      duration: Number.isFinite(player.duration) ? player.duration : null
-    });
-  };
-
-  const onError = () => {
-    if (token !== videoLoadToken) return;
-    useBlobFallback("error del reproductor");
-  };
-
-  player.addEventListener("loadedmetadata", onLoadedMetadata, { once: true });
-  player.addEventListener("error", onError, { once: true });
-
-  player.src = url;
-  player.load();
-
-  // Si el Worker entrega el archivo pero no responde correctamente a Range,
-  // no dejamos al usuario esperando indefinidamente.
-  fallbackTimer = setTimeout(() => {
-    if (token === videoLoadToken && player.readyState < 1) {
-      useBlobFallback("timeout esperando metadata");
-    }
-  }, 7000);
+  if (player) {
+    try { player.pause(); } catch (_) {}
+    player.crossOrigin = "use-credentials";
+    player.style.width = "";
+    player.style.height = "";
+    player.src = getFileUrl(file);
+    player.load();
+    player.currentTime = 0;
+  }
 
   requestAnimationFrame(fitFloatingVideo);
 }
+
 function moveVideo(direction) {
   if (videoFiles.length <= 1) return;
 
@@ -3031,6 +2664,104 @@ initImageLightbox();
     .photo-results-grid{flex:1;overflow:auto;padding:14px;display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,320px),1fr));gap:12px;align-content:start}
     .photo-results-grid .file{min-width:0}.photo-results-empty{grid-column:1/-1;display:grid;place-items:center;min-height:180px;color:#91a6ba;text-align:center}
     /* Tarjetas de fotos: ordenadas y cómodas en móvil */
+    /* ==========================================================
+       LISTADO PRINCIPAL / MINIATURAS — MISMA PRESENTACIÓN
+       QUE LA VENTANA "TODOS"
+       ========================================================== */
+    .thumbnail-subfolder .file-list{
+      display:grid!important;
+      grid-template-columns:repeat(2,minmax(0,1fr))!important;
+      gap:10px!important;
+      padding:10px!important;
+      align-items:start!important;
+      overflow:visible!important;
+    }
+    .thumbnail-subfolder .file-list > .empty{
+      grid-column:1 / -1!important;
+    }
+    .thumbnail-subfolder .mediafile-file{
+      min-width:0!important;
+      width:100%!important;
+      box-sizing:border-box!important;
+      display:flex!important;
+      flex-direction:column!important;
+      gap:6px!important;
+      padding:8px!important;
+      border:1px solid rgba(74,197,255,.20)!important;
+      border-radius:17px!important;
+      background:linear-gradient(145deg,rgba(10,24,40,.96),rgba(5,13,24,.98))!important;
+      box-shadow:0 8px 22px rgba(0,0,0,.22)!important;
+      overflow:hidden!important;
+    }
+    .thumbnail-subfolder .mediafile-file .file-type{display:none!important}
+    .thumbnail-subfolder .mediafile-file .file-info{
+      min-width:0!important;
+      display:flex!important;
+      flex-direction:column!important;
+      gap:5px!important;
+    }
+    .thumbnail-subfolder .mediafile-file .file-name{
+      order:2!important;
+      min-width:0!important;
+      overflow:hidden!important;
+      text-overflow:ellipsis!important;
+      white-space:nowrap!important;
+      font-size:13px!important;
+      line-height:1.25!important;
+      font-weight:800!important;
+    }
+    .thumbnail-subfolder .mediafile-file .file-meta{
+      order:3!important;
+      overflow:hidden!important;
+      text-overflow:ellipsis!important;
+      white-space:nowrap!important;
+      color:#829bb0!important;
+      font-size:10px!important;
+    }
+    .thumbnail-subfolder .mediafile-file .mediafile-preview{
+      order:1!important;
+      width:100%!important;
+      height:105px!important;
+      min-height:105px!important;
+      margin:0!important;
+      border:1px solid rgba(82,216,255,.14)!important;
+      border-radius:12px!important;
+      background:#071321!important;
+      overflow:hidden!important;
+    }
+    .thumbnail-subfolder .mediafile-file .mediafile-preview img,
+    .thumbnail-subfolder .mediafile-file .mediafile-preview video{
+      width:100%!important;
+      height:100%!important;
+      object-fit:cover!important;
+      display:block!important;
+    }
+    .thumbnail-subfolder .mediafile-file .mediafile-actions{
+      order:4!important;
+      display:grid!important;
+      grid-template-columns:1fr 1fr!important;
+      gap:5px!important;
+      margin-top:2px!important;
+    }
+    .thumbnail-subfolder .mediafile-file .mediafile-actions > button{
+      min-width:0!important;
+      min-height:34px!important;
+      padding:6px 5px!important;
+      font-size:10px!important;
+      border-radius:9px!important;
+    }
+    .thumbnail-subfolder .mediafile-file .mediafile-preview{
+      grid-column:1 / -1!important;
+    }
+    @media(max-width:420px){
+      .thumbnail-subfolder .file-list{gap:8px!important;padding:8px!important}
+      .thumbnail-subfolder .mediafile-file{padding:6px!important;border-radius:15px!important}
+      .thumbnail-subfolder .mediafile-file .mediafile-preview{height:88px!important;min-height:88px!important}
+      .thumbnail-subfolder .mediafile-file .file-name{font-size:11px!important}
+      .thumbnail-subfolder .mediafile-file .file-meta{font-size:9px!important}
+      .thumbnail-subfolder .mediafile-file .mediafile-actions > button{font-size:9px!important;min-height:31px!important}
+    }
+
     .photo-results-file{display:flex!important;flex-direction:column!important;gap:10px!important;padding:12px!important;border:1px solid rgba(74,197,255,.20)!important;border-radius:18px!important;background:linear-gradient(145deg,rgba(10,24,40,.96),rgba(5,13,24,.98))!important;box-shadow:0 10px 28px rgba(0,0,0,.24)!important;overflow:hidden!important}
     .photo-results-file .file-type{display:none!important}
     .photo-results-file .file-info{display:flex!important;flex-direction:column!important;min-width:0!important;gap:7px!important}
@@ -3043,116 +2774,7 @@ initImageLightbox();
     .photo-results-file .mediafile-open{background:rgba(82,216,255,.12)!important;color:#dff8ff!important;border:1px solid rgba(82,216,255,.24)!important}
     .photo-results-file .mediafile-download{background:rgba(82,216,255,.10)!important;color:#dff8ff!important;border:1px solid rgba(82,216,255,.20)!important}
     .photo-results-file .mediafile-delete{background:#8f2020!important;color:#fff!important;border:1px solid rgba(255,120,120,.22)!important}
-    /* =========================================================
-       TODOS LOS ARCHIVOS — GALERÍA COMPACTA 2 COLUMNAS
-       Aproximadamente 10 miniaturas visibles: 2 columnas x 5 filas.
-       El contenedor continúa con desplazamiento vertical tipo feed.
-       ========================================================= */
-    .media-results-grid{
-      flex:1;min-height:0;width:100%;box-sizing:border-box;
-      display:grid;grid-template-columns:repeat(2,minmax(0,1fr));
-      grid-auto-rows:minmax(112px,13.2vh);
-      gap:9px;align-content:start;align-items:stretch;
-      overflow-x:hidden;overflow-y:auto;padding:10px 10px 22px;
-      scroll-snap-type:y proximity;overscroll-behavior-y:contain;
-      -webkit-overflow-scrolling:touch;scrollbar-width:thin;
-      scrollbar-color:rgba(91,207,255,.42) transparent;
-      touch-action:pan-y;
-    }
-    .media-results-grid::-webkit-scrollbar{width:5px}
-    .media-results-grid::-webkit-scrollbar-track{background:rgba(255,255,255,.03);border-radius:20px}
-    .media-results-grid::-webkit-scrollbar-thumb{background:rgba(91,207,255,.38);border-radius:20px}
-    .media-thumb-card{
-      width:100%;height:100%;min-width:0;min-height:112px;
-      padding:0;display:flex;flex-direction:column;gap:0;
-      border:1px solid rgba(74,197,255,.24);border-radius:15px;overflow:hidden;
-      color:#eaf8ff;text-align:left;
-      background:linear-gradient(145deg,rgba(10,27,44,.98),rgba(4,13,25,.98));
-      box-shadow:0 8px 22px rgba(0,0,0,.25);cursor:pointer;
-      scroll-snap-align:start;transition:transform .14s ease,border-color .14s ease;
-      -webkit-tap-highlight-color:transparent;
-    }
-    .media-thumb-card:hover,.media-thumb-card:focus-visible{
-      transform:scale(.985);border-color:rgba(91,207,255,.68);outline:none;
-    }
-    .media-thumb-image{
-      position:relative;width:100%;min-width:0;min-height:0;flex:1;
-      display:grid;place-items:center;overflow:hidden;
-      background:#020914;border-bottom:1px solid rgba(91,207,255,.13)
-    }
-    .media-thumb-image img,.media-thumb-image video{
-      width:100%;height:100%;display:block;object-fit:cover;background:#020914
-    }
-    .media-thumb-icon,.media-thumb-fallback{
-      display:grid;place-items:center;width:48px;height:48px;border-radius:14px;
-      background:rgba(74,197,255,.10);color:#cfefff;font-size:28px
-    }
-    .media-thumb-play{
-      position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
-      width:34px;height:34px;display:grid;place-items:center;border-radius:50%;
-      background:rgba(0,0,0,.66);color:#fff;font-size:14px;padding-left:2px;
-      box-shadow:0 4px 12px rgba(0,0,0,.35);pointer-events:none
-    }
-    .media-thumb-info{
-      height:36px;min-height:36px;min-width:0;display:grid;align-content:center;
-      gap:2px;padding:0 9px
-    }
-    .media-thumb-name{
-      overflow:hidden;color:#f1f9ff;font-size:12px;font-weight:800;line-height:1.15;
-      text-overflow:ellipsis;white-space:nowrap
-    }
-    .media-thumb-meta{
-      overflow:hidden;color:#8ea5ba;font-size:9px;line-height:1.1;
-      text-overflow:ellipsis;white-space:nowrap
-    }
-
-    @media(max-width:520px){
-      .media-results-grid{
-        grid-template-columns:repeat(2,minmax(0,1fr));
-        grid-auto-rows:13.2vh;gap:8px;padding:8px 7px 18px
-      }
-      .media-thumb-card{min-height:105px;border-radius:13px}
-      .media-thumb-info{height:34px;min-height:34px;padding:0 8px}
-      .media-thumb-name{font-size:11px}.media-thumb-meta{font-size:8.5px}
-      .media-thumb-play{width:30px;height:30px;font-size:12px}
-    }
-
-    /* Los visores deben quedar por encima de la ventana de resultados. */
-    .image-lightbox,.video-lightbox{z-index:200000!important}
-
-    @media(max-width:520px){
-      /* IMPORTANTE: las tarjetas deben respetar las 2 columnas del grid.
-         No usar anchos basados en viewport porque provocan solapamiento. */
-      .media-results-grid{
-        grid-template-columns:repeat(2,minmax(0,1fr));
-        grid-auto-rows:105px;
-        gap:8px;
-        padding:8px 7px 18px;
-        align-items:stretch;
-      }
-      .media-thumb-card{
-        width:100%;
-        min-width:0;
-        max-width:none;
-        height:105px;
-        min-height:0;
-        border-radius:13px;
-      }
-      .media-thumb-image{
-        flex:1 1 auto;
-        height:auto;
-        min-height:0;
-      }
-      .media-thumb-info{
-        flex:0 0 34px;
-        height:34px;
-        min-height:34px;
-        padding:0 8px;
-      }
-      .media-thumb-name{font-size:11px}.media-thumb-meta{font-size:8.5px}
-    }
-
-    .mediafile-modal{z-index:200100!important}
+    .mediafile-modal{z-index:100020!important}
     .mediafile-modal img{max-width:100%!important;max-height:calc(92dvh - 110px)!important;object-fit:contain!important}
     @media(max-width:520px){.photo-results-overlay{padding:8px}.photo-results-dialog{height:94vh;border-radius:20px}.photo-results-head{padding:15px 13px 12px}.photo-results-grid{padding:10px;grid-template-columns:1fr;gap:10px}.photo-results-toolbar{padding:9px 11px}.photo-results-file .mediafile-preview{height:200px!important}.photo-results-file .mediafile-actions{grid-template-columns:1fr 1fr!important}.photo-results-file .mediafile-actions>button{font-size:13px!important;padding:9px 8px!important}}
     @keyframes photoDayFade{from{opacity:0}to{opacity:1}}@keyframes photoDayPop{from{opacity:0;transform:translateY(10px) scale(.97)}to{opacity:1;transform:translateY(0) scale(1)}}
