@@ -1585,27 +1585,80 @@ function moveVideo(direction) {
   renderVideoLightbox();
 }
 
-function downloadCurrentVideo() {
+async function downloadCurrentVideo() {
   if (!videoFiles.length) return;
 
   const file = videoFiles[videoIndex];
   const name = getFileName(file);
+  const url = getFileUrl(file);
+  const button = $("#videoLightboxDownload");
 
-  // El Worker controla Content-Disposition mediante download=1.
-  const url =
-    CONFIG.API_URL +
-    "/download?file=" +
-    encodeURIComponent(name) +
-    "&download=1";
+  try {
+    if (button) {
+      button.disabled = true;
+      button.textContent = "⏳ Descargando…";
+    }
 
-  log("Solicitando descarga de video", {
-    name,
-    url
-  });
+    log("Descargando video como Blob", {
+      name,
+      url
+    });
 
-  window.location.href = url;
+    // Igual que la descarga de imágenes que ya comprobamos
+    // que funciona en Android/Chrome.
+    const response = await fetch(url, {
+      method: "GET",
+      mode: "cors",
+      cache: "no-store"
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+
+    const blob = await response.blob();
+
+    if (!blob.size) {
+      throw new Error("El archivo descargado está vacío.");
+    }
+
+    const blobUrl = URL.createObjectURL(blob);
+
+    const link = document.createElement("a");
+    link.href = blobUrl;
+    link.download = name;
+    link.style.display = "none";
+
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+
+    setTimeout(() => {
+      URL.revokeObjectURL(blobUrl);
+    }, 10000);
+
+    log("Descarga de video iniciada correctamente", {
+      name,
+      size: blob.size,
+      type: blob.type
+    });
+
+  } catch (error) {
+    log("ERROR DE DESCARGA DE VIDEO", {
+      name,
+      message: error?.message || String(error)
+    });
+
+    alert("No se pudo descargar el video. Revisa el diagnóstico.");
+  } finally {
+    setTimeout(() => {
+      if (button) {
+        button.disabled = false;
+        button.textContent = "⬇️ Descargar";
+      }
+    }, 1200);
+  }
 }
-
 function initVideoLightbox() {
   document.addEventListener("click", event => {
     const target = event.target;
