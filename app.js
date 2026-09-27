@@ -1,6 +1,6 @@
 /*
   Mediafile DNL - frontend
-  VERSION 1.3.0
+  VERSION 1.4.0
 
   El navegador NO contiene claves de Backblaze.
   Todo pasa por el Worker API.
@@ -8,7 +8,7 @@
 
 const CONFIG = {
   API_URL: "https://m-e2a5ediafile-dnl.danny941117.workers.dev",
-  VERSION: "1.3.0"
+  VERSION: "1.4.0"
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -208,6 +208,82 @@ function getFileUrl(file) {
     "/download?file=" +
     encodeURIComponent(name)
   );
+}
+
+
+// ============================================================
+// ELIMINAR ARCHIVO
+// ============================================================
+
+async function deleteFile(file) {
+  const name = getFileName(file);
+
+  const confirmed = window.confirm(
+    `¿Eliminar "${name}"?\n\nEsta acción no se puede deshacer.`
+  );
+
+  if (!confirmed) {
+    log("Eliminación cancelada", { name });
+    return;
+  }
+
+  log("Eliminando archivo", { name });
+
+  try {
+    // El Worker recibe DELETE /download?file=...
+    // y realiza la eliminación de forma segura en Backblaze.
+    const response = await fetch(
+      CONFIG.API_URL +
+      "/download?file=" +
+      encodeURIComponent(name),
+      {
+        method: "DELETE",
+        cache: "no-store"
+      }
+    );
+
+    const text = await response.text();
+
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = { raw: text };
+    }
+
+    log(
+      response.ok ? "ELIMINACIÓN OK" : "ERROR AL ELIMINAR",
+      data
+    );
+
+    if (!response.ok || (data && data.ok === false)) {
+      throw new Error(
+        data?.error ||
+        data?.message ||
+        `HTTP ${response.status}`
+      );
+    }
+
+    // Quitar inmediatamente de la interfaz.
+    allFiles = allFiles.filter(
+      (item) => getFileName(item) !== name
+    );
+
+    renderFiles();
+
+    log("Archivo eliminado correctamente", { name });
+
+  } catch (error) {
+    log("ERROR DE ELIMINACIÓN", {
+      name,
+      message: error?.message || String(error)
+    });
+
+    alert(
+      "No se pudo eliminar el archivo.\n\n" +
+      (error?.message || "Error desconocido")
+    );
+  }
 }
 
 
@@ -760,6 +836,22 @@ function createFileElement(file) {
           ⬇️ Descargar
         </button>
 
+        <button
+          class="mediafile-delete"
+          type="button"
+          style="
+            border:0;
+            border-radius:9px;
+            padding:8px 12px;
+            cursor:pointer;
+            font-weight:700;
+            background:#8f2020;
+            color:white;
+          "
+        >
+          🗑️ Eliminar
+        </button>
+
       </div>
     </div>
   `;
@@ -778,6 +870,11 @@ function createFileElement(file) {
   const downloadButton =
     element.querySelector(
       ".mediafile-download"
+    );
+
+  const deleteButton =
+    element.querySelector(
+      ".mediafile-delete"
     );
 
   // ==========================================================
@@ -916,6 +1013,12 @@ function createFileElement(file) {
   downloadButton.addEventListener(
     "click",
     () => downloadFile(file)
+  );
+
+
+  deleteButton.addEventListener(
+    "click",
+    () => deleteFile(file)
   );
 
 
