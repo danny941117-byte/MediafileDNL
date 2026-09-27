@@ -1463,7 +1463,7 @@ if (fileInput) {
 
 
 // ============================================================
-// VISOR DE IMAGEN / LIGHTBOX — v1.6.0
+// VISOR DE IMAGEN / LIGHTBOX — v1.6.2
 // ============================================================
 
 let galleryImages = [];
@@ -1680,11 +1680,18 @@ function initImageLightbox() {
       lightboxMove(1);
     }
   });
+
+  log("Visor inicializado", {
+    cerrar: !!close,
+    anterior: !!prev,
+    siguiente: !!next,
+    descargar: !!download
+  });
 }
 
 
 // ============================================================
-// GALERÍA REAL — v1.5.0
+// GALERÍA REAL — v1.6.2
 // ============================================================
 
 function getImageFiles() {
@@ -1862,7 +1869,15 @@ if (galleryBack) {
   );
 }
 
-initImageLightbox();
+if (document.readyState === "loading") {
+  document.addEventListener(
+    "DOMContentLoaded",
+    initImageLightbox,
+    { once: true }
+  );
+} else {
+  initImageLightbox();
+}
 
 // ============================================================
 // INICIO
