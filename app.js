@@ -249,6 +249,7 @@ async function deleteFile(file) {
       encodeURIComponent(name),
       {
         method: "DELETE",
+        credentials: "include",
         cache: "no-store"
       }
     );
@@ -1179,6 +1180,7 @@ async function loadFiles() {
         CONFIG.API_URL,
         {
           method: "GET",
+          credentials: "include",
           cache: "no-store"
         }
       );
@@ -1312,6 +1314,7 @@ async function uploadFiles(files) {
           CONFIG.API_URL,
           {
             method: "POST",
+            credentials: "include",
 
             headers: {
               "X-Archivo-Nombre":
@@ -1801,6 +1804,7 @@ function renderVideoLightbox() {
 
   if (player) {
     try { player.pause(); } catch (_) {}
+    player.crossOrigin = "use-credentials";
     player.style.width = "";
     player.style.height = "";
     player.src = getFileUrl(file);
@@ -1841,6 +1845,7 @@ async function downloadCurrentVideo() {
     const response = await fetch(url, {
       method: "GET",
       mode: "cors",
+      credentials: "include",
       cache: "no-store"
     });
 
@@ -2082,6 +2087,7 @@ async function downloadCurrentLightboxImage() {
     const response = await fetch(url, {
       method: "GET",
       mode: "cors",
+      credentials: "include",
       cache: "no-store"
     });
 
