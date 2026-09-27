@@ -1,6 +1,6 @@
 /*
   Mediafile DNL - frontend
-  VERSION 1.4.0
+  VERSION 1.5.0
 
   El navegador NO contiene claves de Backblaze.
   Todo pasa por el Worker API.
@@ -8,7 +8,7 @@
 
 const CONFIG = {
   API_URL: "https://m-e2a5ediafile-dnl.danny941117.workers.dev",
-  VERSION: "1.4.0"
+  VERSION: "1.5.0"
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -270,6 +270,7 @@ async function deleteFile(file) {
     );
 
     renderFiles();
+    renderGallery();
 
     log("Archivo eliminado correctamente", { name });
 
@@ -1459,6 +1460,127 @@ if (fileInput) {
 }
 
 
+
+// ============================================================
+// GALERÍA REAL — v1.5.0
+// ============================================================
+
+function getImageFiles() {
+  return allFiles.filter(file => fileKind(file) === "image");
+}
+
+function renderGallery() {
+  const grid = $("#galleryGrid");
+  const count = $("#galleryCount");
+
+  if (!grid) return;
+
+  const images = getImageFiles();
+
+  if (count) {
+    count.textContent =
+      `${images.length} ${images.length === 1 ? "imagen" : "imágenes"}`;
+  }
+
+  grid.innerHTML = "";
+
+  if (!images.length) {
+    grid.innerHTML =
+      '<div class="gallery-empty">No hay imágenes almacenadas todavía.</div>';
+    return;
+  }
+
+  images.forEach(file => {
+    const name = getFileName(file);
+    const item = document.createElement("button");
+
+    item.type = "button";
+    item.className = "gallery-item";
+    item.title = name;
+
+    const image = document.createElement("img");
+    image.src = getFileUrl(file);
+    image.alt = name;
+    image.loading = "lazy";
+
+    image.addEventListener("error", () => {
+      item.innerHTML =
+        '<div class="gallery-empty" style="height:100%;display:grid;place-items:center">🖼️<br>Vista no disponible</div>';
+    });
+
+    const label = document.createElement("div");
+    label.className = "gallery-item-name";
+    label.textContent = name;
+
+    item.appendChild(image);
+    item.appendChild(label);
+
+    item.addEventListener("click", () => {
+      previewFile(file);
+    });
+
+    grid.appendChild(item);
+  });
+}
+
+function showGallery() {
+  const gallery = $("#galleryPanel");
+  const panel = document.querySelector(".panel");
+
+  if (gallery) {
+    gallery.hidden = false;
+    renderGallery();
+    gallery.scrollIntoView({
+      behavior: "smooth",
+      block: "start"
+    });
+  }
+
+  if (panel) {
+    panel.style.display = "none";
+  }
+
+  document.querySelectorAll(".bottom-nav button").forEach(button => {
+    button.classList.remove("active");
+  });
+
+  const galleryNavButton = $("#navGallery");
+  if (galleryNavButton) {
+    galleryNavButton.classList.add("active");
+  }
+
+  log("Galería abierta", {
+    imagenes: getImageFiles().length
+  });
+}
+
+function showFiles() {
+  const gallery = $("#galleryPanel");
+  const panel = document.querySelector(".panel");
+
+  if (gallery) {
+    gallery.hidden = true;
+  }
+
+  if (panel) {
+    panel.style.display = "";
+    panel.scrollIntoView({
+      behavior: "smooth",
+      block: "start"
+    });
+  }
+
+  document.querySelectorAll(".bottom-nav button").forEach(button => {
+    button.classList.remove("active");
+  });
+
+  const filesNavButton = $("#navFiles");
+  if (filesNavButton) {
+    filesNavButton.classList.add("active");
+  }
+}
+
+
 // ============================================================
 // NAVEGACIÓN
 // ============================================================
@@ -1471,24 +1593,9 @@ if (navFiles) {
   navFiles.addEventListener(
     "click",
     () => {
-
-      activeFilter =
-        "all";
-
+      activeFilter = "all";
       renderFiles();
-
-      const panel =
-        document.querySelector(
-          ".panel"
-        );
-
-      if (panel) {
-
-        panel.scrollIntoView({
-          behavior:
-            "smooth"
-        });
-      }
+      showFiles();
     }
   );
 }
@@ -1498,29 +1605,9 @@ const navGallery =
   $("#navGallery");
 
 if (navGallery) {
-
   navGallery.addEventListener(
     "click",
-    () => {
-
-      activeFilter =
-        "image";
-
-      renderFiles();
-
-      const panel =
-        document.querySelector(
-          ".panel"
-        );
-
-      if (panel) {
-
-        panel.scrollIntoView({
-          behavior:
-            "smooth"
-        });
-      }
-    }
+    showGallery
   );
 }
 
@@ -1541,6 +1628,17 @@ if (navConfig) {
   );
 }
 
+
+
+const galleryBack =
+  $("#btnGalleryBack");
+
+if (galleryBack) {
+  galleryBack.addEventListener(
+    "click",
+    showFiles
+  );
+}
 
 // ============================================================
 // INICIO
