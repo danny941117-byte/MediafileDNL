@@ -104,14 +104,25 @@
       <p>Acceso privado. Ingresa tu contraseña para continuar.</p>
 
       <form id="authForm" autocomplete="on">
-        <input
-          id="authPassword"
-          type="password"
-          autocomplete="current-password"
-          placeholder="Contraseña"
-          aria-label="Contraseña"
-          required
-        >
+        <div style="position:relative;">
+          <input
+            id="authPassword"
+            type="password"
+            autocomplete="current-password"
+            placeholder="Contraseña"
+            aria-label="Contraseña"
+            required
+            minlength="1"
+            style="padding-right:56px;"
+          >
+          <button
+            id="authTogglePassword"
+            type="button"
+            aria-label="Mostrar contraseña"
+            title="Mostrar contraseña"
+            style="position:absolute;right:8px;top:50%;transform:translateY(-50%);border:0;background:transparent;color:#b8d8c9;font-size:20px;cursor:pointer;padding:8px;"
+          >👁️</button>
+        </div>
         <button id="authLoginButton" type="submit">Entrar</button>
       </form>
 
@@ -228,7 +239,43 @@
       </div>
     </div>
 
-<script src="app_SECURE_v2.js?v=2.0.0"></script>
+<script>
+(function () {
+  window.addEventListener("error", function (event) {
+    var box = document.getElementById("authMessage");
+    if (box && !box.textContent) {
+      box.textContent = "Error del sistema: " + (event.message || "error desconocido");
+    }
+  });
+
+  window.addEventListener("unhandledrejection", function (event) {
+    var box = document.getElementById("authMessage");
+    if (box && !box.textContent) {
+      var reason = event.reason && event.reason.message ? event.reason.message : String(event.reason || "error desconocido");
+      box.textContent = "Error del sistema: " + reason;
+    }
+  });
+
+  document.addEventListener("DOMContentLoaded", function () {
+    var input = document.getElementById("authPassword");
+    var toggle = document.getElementById("authTogglePassword");
+
+    if (toggle && input) {
+      toggle.addEventListener("click", function () {
+        var visible = input.type === "text";
+        input.type = visible ? "password" : "text";
+        toggle.textContent = visible ? "👁️" : "🙈";
+        toggle.setAttribute("aria-label", visible ? "Mostrar contraseña" : "Ocultar contraseña");
+        toggle.title = visible ? "Mostrar contraseña" : "Ocultar contraseña";
+      });
+    }
+
+    if (input) input.focus();
+  });
+})();
+</script>
+
+<script src="app_SECURE_v2.js?v=3.0.0" onerror="window.mediafileScriptError=true;var m=document.getElementById('authMessage');if(m)m.textContent='Error: no se pudo cargar app_SECURE_v2.js. Verifica que el archivo esté en GitHub.';"></script>
 
     <!-- VISOR DE VIDEO -->
     <div id="videoLightbox" class="video-lightbox" hidden>
@@ -261,5 +308,11 @@
       </div>
     </div>
 
+<noscript>
+  <div style="position:fixed;inset:0;z-index:999999;background:#050a08;color:#eefcf5;padding:30px;font-family:Arial,sans-serif;">
+    <h2>Mediafile DNL</h2>
+    <p>JavaScript está desactivado. Actívalo para utilizar el sistema.</p>
+  </div>
+</noscript>
 </body>
 </html>
