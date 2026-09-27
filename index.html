@@ -7,7 +7,119 @@
   <title>Mediafile DNL</title>
   <link rel="stylesheet" href="style.css">
 </head>
-<body>
+<body class="mediafile-locked">
+  
+  <style>
+    body.mediafile-locked > *:not(#authGate) {
+      visibility: hidden !important;
+    }
+
+    #authGate {
+      position: fixed;
+      inset: 0;
+      z-index: 999999;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      box-sizing: border-box;
+      background:
+        radial-gradient(circle at top, rgba(35,150,100,.20), transparent 45%),
+        #050a08;
+    }
+
+    #authGate[hidden] {
+      display: none !important;
+    }
+
+    .auth-card {
+      width: min(420px, 100%);
+      padding: 28px;
+      border-radius: 24px;
+      background: rgba(9,22,16,.96);
+      border: 1px solid rgba(90,220,160,.28);
+      box-shadow: 0 25px 80px rgba(0,0,0,.55);
+      color: #eefcf5;
+      box-sizing: border-box;
+    }
+
+    .auth-logo {
+      font-size: 42px;
+      margin-bottom: 8px;
+    }
+
+    .auth-card h1 {
+      margin: 0 0 8px;
+      font-size: 28px;
+    }
+
+    .auth-card p {
+      margin: 0 0 22px;
+      opacity: .78;
+      line-height: 1.5;
+    }
+
+    #authPassword {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 14px 15px;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,.15);
+      background: #07110d;
+      color: white;
+      outline: none;
+      font-size: 16px;
+    }
+
+    #authLoginButton {
+      width: 100%;
+      margin-top: 12px;
+      padding: 14px;
+      border: 0;
+      border-radius: 12px;
+      cursor: pointer;
+      font-weight: 800;
+      font-size: 16px;
+    }
+
+    #authMessage {
+      min-height: 22px;
+      margin-top: 14px;
+      font-size: 14px;
+      opacity: .85;
+    }
+
+    .auth-security {
+      margin-top: 18px;
+      font-size: 12px;
+      opacity: .55;
+      text-align: center;
+    }
+  </style>
+
+  <div id="authGate">
+    <div class="auth-card">
+      <div class="auth-logo">🔐</div>
+      <h1>Mediafile DNL</h1>
+      <p>Acceso privado. Ingresa tu contraseña para continuar.</p>
+
+      <form id="authForm" autocomplete="on">
+        <input
+          id="authPassword"
+          type="password"
+          autocomplete="current-password"
+          placeholder="Contraseña"
+          aria-label="Contraseña"
+          required
+        >
+        <button id="authLoginButton" type="submit">Entrar</button>
+      </form>
+
+      <div id="authMessage" role="status"></div>
+      <div class="auth-security">Sesión protegida · conexión segura</div>
+    </div>
+  </div>
+
   <header class="topbar">
     <div class="brand">
       <div class="brand-icon">▣</div>
@@ -16,7 +128,7 @@
         <small>Almacenamiento privado</small>
       </div>
     </div>
-    <button id="btnRefresh" class="icon-btn" title="Actualizar">↻</button>
+    <div style="display:flex;gap:8px;align-items:center;"><button id="btnLogout" class="icon-btn" title="Cerrar sesión" type="button">⎋</button><button id="btnRefresh" class="icon-btn" title="Actualizar">↻</button></div>
   </header>
 
   <main>
@@ -116,7 +228,7 @@
       </div>
     </div>
 
-<script src="app.js?v=1.9.1"></script>
+<script src="app_SECURE_v2.js?v=2.0.0"></script>
 
     <!-- VISOR DE VIDEO -->
     <div id="videoLightbox" class="video-lightbox" hidden>

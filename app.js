@@ -249,6 +249,7 @@ async function deleteFile(file) {
       encodeURIComponent(name),
       {
         method: "DELETE",
+        credentials: "include",
         cache: "no-store"
       }
     );
@@ -424,6 +425,7 @@ async function downloadFile(file) {
     const response = await fetch(url, {
       method: "GET",
       mode: "cors",
+      credentials: "include",
       cache: "no-store"
     });
 
@@ -1224,6 +1226,7 @@ async function loadFiles() {
         CONFIG.API_URL,
         {
           method: "GET",
+          credentials: "include",
           cache: "no-store"
         }
       );
@@ -1357,6 +1360,7 @@ async function uploadFiles(files) {
           CONFIG.API_URL,
           {
             method: "POST",
+            credentials: "include",
 
             headers: {
               "X-Archivo-Nombre":
@@ -1700,6 +1704,7 @@ async function downloadCurrentVideo() {
     const response = await fetch(url, {
       method: "GET",
       mode: "cors",
+      credentials: "include",
       cache: "no-store"
     });
 
@@ -1943,6 +1948,7 @@ async function downloadCurrentLightboxImage() {
     const response = await fetch(url, {
       method: "GET",
       mode: "cors",
+      credentials: "include",
       cache: "no-store"
     });
 
@@ -2208,9 +2214,10 @@ if (navConfig) {
     "click",
     () => {
 
-      alert(
-        "Configuración avanzada de Mediafile DNL."
-      );
+      const gate = document.getElementById("authGate");
+      if (gate) {
+        alert('La sesión está activa. Usa el botón "Cerrar sesión" del panel de acceso si deseas salir.');
+      }
     }
   );
 }
@@ -2229,6 +2236,154 @@ if (galleryBack) {
 
 initImageLightbox();
 
+
+// ============================================================
+// ACCESO PRIVADO MEDIAFILE DNL
+// ============================================================
+
+function setAppLocked(locked) {
+  document.body.classList.toggle("mediafile-locked", locked);
+  const gate = document.getElementById("authGate");
+  if (gate) gate.hidden = !locked;
+}
+
+async function checkSession() {
+  try {
+    const response = await fetch(
+      CONFIG.API_URL + "/auth/session",
+      {
+        method: "GET",
+        credentials: "include",
+        cache: "no-store"
+      }
+    );
+
+    const data = await response.json();
+
+    if (response.ok && data?.autenticado === true) {
+      setAppLocked(false);
+      log("Sesión válida", { autenticado: true });
+      loadFiles();
+      return true;
+    }
+
+    setAppLocked(true);
+    log("Sesión requerida");
+    return false;
+
+  } catch (error) {
+    setAppLocked(true);
+    log("ERROR DE AUTENTICACIÓN", {
+      message: error?.message || String(error)
+    });
+    return false;
+  }
+}
+
+async function loginMediafile(password) {
+  const button = document.getElementById("authLoginButton");
+  const message = document.getElementById("authMessage");
+
+  if (button) {
+    button.disabled = true;
+    button.textContent = "⏳ Verificando…";
+  }
+
+  if (message) {
+    message.textContent = "Verificando acceso…";
+  }
+
+  try {
+    const response = await fetch(
+      CONFIG.API_URL + "/auth/login",
+      {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ password })
+      }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok || data?.ok !== true) {
+      throw new Error(data?.error || "No se pudo iniciar sesión.");
+    }
+
+    if (message) message.textContent = "Acceso concedido.";
+
+    const input = document.getElementById("authPassword");
+    if (input) input.value = "";
+
+    setAppLocked(false);
+    log("Inicio de sesión correcto");
+    await loadFiles();
+
+  } catch (error) {
+    setAppLocked(true);
+    if (message) {
+      message.textContent = error?.message || "Contraseña incorrecta.";
+    }
+    log("ERROR DE LOGIN", {
+      message: error?.message || String(error)
+    });
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = "Entrar";
+    }
+  }
+}
+
+async function logoutMediafile() {
+  try {
+    await fetch(
+      CONFIG.API_URL + "/auth/logout",
+      {
+        method: "POST",
+        credentials: "include",
+        cache: "no-store"
+      }
+    );
+  } catch (_) {}
+
+  setAppLocked(true);
+  allFiles = [];
+  renderFiles();
+
+  const message = document.getElementById("authMessage");
+  if (message) message.textContent = "Sesión cerrada.";
+  log("Sesión cerrada");
+}
+
+function initAuth() {
+  const form = document.getElementById("authForm");
+  const input = document.getElementById("authPassword");
+  const logout = document.getElementById("btnLogout");
+
+  if (form) {
+    form.addEventListener("submit", event => {
+      event.preventDefault();
+      const password = input?.value || "";
+      if (!password) {
+        const message = document.getElementById("authMessage");
+        if (message) message.textContent = "Escribe la contraseña.";
+        return;
+      }
+      loginMediafile(password);
+    });
+  }
+
+  if (logout) {
+    logout.addEventListener("click", logoutMediafile);
+  }
+
+  setAppLocked(true);
+  checkSession();
+}
+
 // ============================================================
 // INICIO
 // ============================================================
@@ -2245,8 +2400,7 @@ log(
 );
 
 
-loadFiles();
-
+initAuth();
 
 // Fallback: abrir videos desde cualquier tarjeta/listado que tenga un elemento
 // marcado con data-video-open, sin alterar los controles existentes.
