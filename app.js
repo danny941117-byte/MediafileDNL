@@ -1,6 +1,6 @@
 /*
   Mediafile DNL - frontend
-  VERSION 1.5.0
+  VERSION 1.6.0
 
   El navegador NO contiene claves de Backblaze.
   Todo pasa por el Worker API.
@@ -8,7 +8,7 @@
 
 const CONFIG = {
   API_URL: "https://m-e2a5ediafile-dnl.danny941117.workers.dev",
-  VERSION: "1.5.0"
+  VERSION: "1.6.0"
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -1461,6 +1461,181 @@ if (fileInput) {
 
 
 
+
+// ============================================================
+// VISOR DE IMAGEN / LIGHTBOX — v1.6.0
+// ============================================================
+
+let galleryImages = [];
+let lightboxIndex = 0;
+let lightboxPreviousOverflow = "";
+
+function refreshGalleryImages() {
+  galleryImages = getImageFiles();
+}
+
+function openImageLightbox(file) {
+  refreshGalleryImages();
+
+  const index = galleryImages.findIndex(item => {
+    const a = item.fileId || item.id || getFileName(item);
+    const b = file.fileId || file.id || getFileName(file);
+    return String(a) === String(b);
+  });
+
+  lightboxIndex = index >= 0 ? index : 0;
+
+  renderLightbox();
+
+  const lightbox = $("#imageLightbox");
+  if (lightbox) {
+    lightbox.hidden = false;
+    lightboxPreviousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    document.body.classList.add("lightbox-open");
+  }
+
+  log("Visor de imagen abierto", {
+    imagenes: galleryImages.length,
+    indice: lightboxIndex + 1
+  });
+}
+
+function closeImageLightbox() {
+  const lightbox = $("#imageLightbox");
+
+  if (lightbox) {
+    lightbox.hidden = true;
+  }
+
+  document.body.style.overflow = lightboxPreviousOverflow || "";
+  document.body.classList.remove("lightbox-open");
+}
+
+function renderLightbox() {
+  refreshGalleryImages();
+
+  if (!galleryImages.length) {
+    closeImageLightbox();
+    return;
+  }
+
+  if (lightboxIndex < 0) {
+    lightboxIndex = galleryImages.length - 1;
+  }
+
+  if (lightboxIndex >= galleryImages.length) {
+    lightboxIndex = 0;
+  }
+
+  const file = galleryImages[lightboxIndex];
+  const image = $("#lightboxImage");
+  const title = $("#lightboxTitle");
+  const counter = $("#lightboxCounter");
+  const prev = $("#lightboxPrev");
+  const next = $("#lightboxNext");
+
+  if (image) {
+    image.src = getFileUrl(file);
+    image.alt = getFileName(file);
+  }
+
+  if (title) {
+    title.textContent = getFileName(file);
+  }
+
+  if (counter) {
+    counter.textContent =
+      `${lightboxIndex + 1} / ${galleryImages.length}`;
+  }
+
+  // Con dos o más imágenes, las flechas permiten recorrerlas.
+  // Con una sola, quedan desactivadas.
+  if (prev) {
+    prev.disabled = galleryImages.length <= 1;
+  }
+
+  if (next) {
+    next.disabled = galleryImages.length <= 1;
+  }
+}
+
+function lightboxMove(direction) {
+  if (galleryImages.length <= 1) return;
+
+  lightboxIndex += direction;
+
+  if (lightboxIndex < 0) {
+    lightboxIndex = galleryImages.length - 1;
+  }
+
+  if (lightboxIndex >= galleryImages.length) {
+    lightboxIndex = 0;
+  }
+
+  renderLightbox();
+}
+
+function downloadCurrentLightboxImage() {
+  if (!galleryImages.length) return;
+
+  const file = galleryImages[lightboxIndex];
+  const url = getFileUrl(file);
+
+  const link = document.createElement("a");
+  link.href = url;
+  link.target = "_blank";
+  link.rel = "noopener";
+  link.download = getFileName(file);
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+
+  log("Descarga solicitada desde visor", {
+    name: getFileName(file)
+  });
+}
+
+function initImageLightbox() {
+  const close = $("#lightboxClose");
+  const backdrop = document.querySelector("[data-lightbox-close]");
+  const prev = $("#lightboxPrev");
+  const next = $("#lightboxNext");
+  const download = $("#lightboxDownload");
+
+  if (close) close.addEventListener("click", closeImageLightbox);
+  if (backdrop) backdrop.addEventListener("click", closeImageLightbox);
+
+  if (prev) {
+    prev.addEventListener("click", () => lightboxMove(-1));
+  }
+
+  if (next) {
+    next.addEventListener("click", () => lightboxMove(1));
+  }
+
+  if (download) {
+    download.addEventListener(
+      "click",
+      downloadCurrentLightboxImage
+    );
+  }
+
+  document.addEventListener("keydown", event => {
+    const lightbox = $("#imageLightbox");
+    if (!lightbox || lightbox.hidden) return;
+
+    if (event.key === "Escape") {
+      closeImageLightbox();
+    } else if (event.key === "ArrowLeft") {
+      lightboxMove(-1);
+    } else if (event.key === "ArrowRight") {
+      lightboxMove(1);
+    }
+  });
+}
+
+
 // ============================================================
 // GALERÍA REAL — v1.5.0
 // ============================================================
@@ -1516,7 +1691,7 @@ function renderGallery() {
     item.appendChild(label);
 
     item.addEventListener("click", () => {
-      previewFile(file);
+      openImageLightbox(file);
     });
 
     grid.appendChild(item);
@@ -1639,6 +1814,8 @@ if (galleryBack) {
     showFiles
   );
 }
+
+initImageLightbox();
 
 // ============================================================
 // INICIO

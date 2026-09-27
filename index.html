@@ -89,6 +89,32 @@
     <button id="navConfig">⚙<span>Config.</span></button>
   </nav>
 
-  <script src="app.js?v=1.5.0"></script>
+  <script src="app.js?v=1.6.0"></script>
+
+    <!-- VISOR DE IMAGEN -->
+    <div id="imageLightbox" class="image-lightbox" hidden>
+      <div class="lightbox-backdrop" data-lightbox-close></div>
+
+      <div class="lightbox-dialog" role="dialog" aria-modal="true" aria-label="Visor de imagen">
+        <div class="lightbox-topbar">
+          <div id="lightboxTitle" class="lightbox-title">Imagen</div>
+          <button id="lightboxClose" class="lightbox-close" type="button" aria-label="Cerrar">✕</button>
+        </div>
+
+        <div class="lightbox-stage">
+          <button id="lightboxPrev" class="lightbox-arrow lightbox-prev" type="button" aria-label="Imagen anterior">‹</button>
+
+          <img id="lightboxImage" class="lightbox-image" alt="Vista ampliada">
+
+          <button id="lightboxNext" class="lightbox-arrow lightbox-next" type="button" aria-label="Imagen siguiente">›</button>
+        </div>
+
+        <div class="lightbox-bottom">
+          <span id="lightboxCounter">1 / 1</span>
+          <button id="lightboxDownload" class="lightbox-download" type="button">⬇️ Descargar</button>
+        </div>
+      </div>
+    </div>
+
 </body>
 </html>
