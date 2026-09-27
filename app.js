@@ -19,7 +19,7 @@ if (document.readyState === "loading") {
 
 const CONFIG = {
   API_URL: "https://m-e2a5ediafile-dnl.danny941117.workers.dev",
-  VERSION: "2.0.5",
+  VERSION: "2.0.6",
   // Capacidad de referencia del almacenamiento B2 gratuito que estamos usando.
   // Si el bucket tiene otra capacidad, cambia solamente este valor.
   STORAGE_LIMIT_BYTES: 10 * 1024 * 1024 * 1024
@@ -3121,11 +3121,35 @@ initImageLightbox();
     .image-lightbox,.video-lightbox{z-index:200000!important}
 
     @media(max-width:520px){
-      .media-results-grid{gap:10px;padding:10px 8px 22px}
-      .media-thumb-card{flex-basis:30vh;width:calc(100vw - 48px);max-width:500px;border-radius:18px}
-      .media-thumb-image{height:calc(100% - 64px)}
-      .media-thumb-info{height:64px;padding:0 13px}
-      .media-thumb-name{font-size:15px}.media-thumb-meta{font-size:11px}
+      /* IMPORTANTE: las tarjetas deben respetar las 2 columnas del grid.
+         No usar anchos basados en viewport porque provocan solapamiento. */
+      .media-results-grid{
+        grid-template-columns:repeat(2,minmax(0,1fr));
+        grid-auto-rows:105px;
+        gap:8px;
+        padding:8px 7px 18px;
+        align-items:stretch;
+      }
+      .media-thumb-card{
+        width:100%;
+        min-width:0;
+        max-width:none;
+        height:105px;
+        min-height:0;
+        border-radius:13px;
+      }
+      .media-thumb-image{
+        flex:1 1 auto;
+        height:auto;
+        min-height:0;
+      }
+      .media-thumb-info{
+        flex:0 0 34px;
+        height:34px;
+        min-height:34px;
+        padding:0 8px;
+      }
+      .media-thumb-name{font-size:11px}.media-thumb-meta{font-size:8.5px}
     }
 
     .mediafile-modal{z-index:200100!important}
