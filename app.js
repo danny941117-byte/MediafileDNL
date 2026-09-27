@@ -19,7 +19,10 @@ if (document.readyState === "loading") {
 
 const CONFIG = {
   API_URL: "https://m-e2a5ediafile-dnl.danny941117.workers.dev",
-  VERSION: "1.6.1"
+  VERSION: "1.9.3",
+  // Capacidad de referencia del almacenamiento B2 gratuito que estamos usando.
+  // Si el bucket tiene otra capacidad, cambia solamente este valor.
+  STORAGE_LIMIT_BYTES: 10 * 1024 * 1024 * 1024
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -286,6 +289,7 @@ async function deleteFile(file) {
     renderFiles();
     renderGallery();
     updateReceiptCard();
+    updateStorageInfo();
 
     const photoResults = document.getElementById("photoResultsOverlay");
     if (photoResults) {
@@ -1513,6 +1517,77 @@ function renderFiles() {
 
 
 // ============================================================
+// ALMACENAMIENTO
+// ============================================================
+
+function getStoredBytes() {
+  return allFiles.reduce((total, file) => {
+    const value = Number(
+      file?.contentLength ??
+      file?.size ??
+      file?.tamañoBytes ??
+      0
+    );
+    return total + (Number.isFinite(value) && value > 0 ? value : 0);
+  }, 0);
+}
+
+function formatStorageBytes(bytes) {
+  if (!Number.isFinite(bytes) || bytes < 0) return "0 B";
+  if (bytes < 1024) return `${Math.round(bytes)} B`;
+  if (bytes < 1024 ** 2) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024 ** 3) return `${(bytes / 1024 ** 2).toFixed(2)} MB`;
+  return `${(bytes / 1024 ** 3).toFixed(2)} GB`;
+}
+
+function updateStorageInfo() {
+  const used = getStoredBytes();
+  const limit = Number(CONFIG.STORAGE_LIMIT_BYTES) || 0;
+  const free = Math.max(0, limit - used);
+  const percent = limit > 0 ? Math.min(100, (used / limit) * 100) : 0;
+
+  let card = document.getElementById("mediafileStorageCard");
+  if (!card) {
+    const hero = document.querySelector(".hero");
+    if (!hero) return;
+
+    card = document.createElement("div");
+    card.id = "mediafileStorageCard";
+    card.style.cssText = `
+      margin-top:16px;
+      padding:13px 14px;
+      border:1px solid rgba(82,216,255,.18);
+      border-radius:16px;
+      background:rgba(3,12,22,.55);
+    `;
+    hero.appendChild(card);
+  }
+
+  card.innerHTML = `
+    <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;">
+      <div>
+        <div style="color:#52d8ff;font-size:10px;font-weight:800;letter-spacing:1.5px;">ALMACENAMIENTO</div>
+        <div style="color:#edf7ff;font-size:13px;font-weight:700;margin-top:3px;">${formatStorageBytes(free)} disponibles</div>
+      </div>
+      <div style="text-align:right;color:#89a7bb;font-size:10px;line-height:1.45;">
+        Usado: ${formatStorageBytes(used)}<br>
+        Capacidad: ${formatStorageBytes(limit)}
+      </div>
+    </div>
+    <div style="height:6px;margin-top:10px;border-radius:99px;background:rgba(255,255,255,.07);overflow:hidden;">
+      <div style="height:100%;width:${percent.toFixed(2)}%;border-radius:99px;background:linear-gradient(90deg,#52d8ff,#8a6cff);transition:width .3s ease;"></div>
+    </div>`;
+
+  log("Almacenamiento actualizado", {
+    usadoBytes: used,
+    disponibleBytes: free,
+    capacidadBytes: limit,
+    porcentajeUsado: Number(percent.toFixed(2))
+  });
+}
+
+
+// ============================================================
 // CARGAR ARCHIVOS
 // ============================================================
 
@@ -1598,6 +1673,7 @@ async function loadFiles() {
 
 
     renderFiles();
+    updateStorageInfo();
 
 
     setConnection(
@@ -1611,6 +1687,7 @@ async function loadFiles() {
     allFiles = [];
 
     renderFiles();
+    updateStorageInfo();
 
 
     setConnection(
@@ -1890,6 +1967,8 @@ let videoFiles = [];
 let videoIndex = 0;
 let videoResizeBound = false;
 let videoMetadataBound = false;
+let videoBlobUrl = null;
+let videoLoadToken = 0;
 
 function refreshVideoFiles() {
   videoFiles = allFiles.filter(file => fileKind(file) === "video");
@@ -2104,13 +2183,24 @@ function openVideoLightbox(file) {
   });
 }
 
+function releaseVideoBlob() {
+  if (videoBlobUrl) {
+    try { URL.revokeObjectURL(videoBlobUrl); } catch (_) {}
+    videoBlobUrl = null;
+  }
+}
+
 function closeVideoLightbox() {
+  videoLoadToken++;
   const box = $("#videoLightbox");
   const player = $("#videoLightboxPlayer");
+
+  releaseVideoBlob();
 
   if (player) {
     try { player.pause(); } catch (_) {}
     player.removeAttribute("src");
+    player.removeAttribute("poster");
     player.load();
     player.style.width = "";
     player.style.height = "";
@@ -2123,7 +2213,7 @@ function closeVideoLightbox() {
   document.body.classList.remove("video-open");
 }
 
-function renderVideoLightbox() {
+async function renderVideoLightbox() {
   refreshVideoFiles();
 
   if (!videoFiles.length) {
@@ -2140,6 +2230,7 @@ function renderVideoLightbox() {
   const counter = $("#videoLightboxCounter");
   const prev = $("#videoLightboxPrev");
   const next = $("#videoLightboxNext");
+  const token = ++videoLoadToken;
 
   if (title) title.textContent = getFileName(file);
   if (counter) {
@@ -2149,19 +2240,96 @@ function renderVideoLightbox() {
   if (prev) prev.disabled = videoFiles.length <= 1;
   if (next) next.disabled = videoFiles.length <= 1;
 
-  if (player) {
-    try { player.pause(); } catch (_) {}
-    player.crossOrigin = "use-credentials";
-    player.style.width = "";
-    player.style.height = "";
+  releaseVideoBlob();
+
+  if (!player) return;
+
+  try { player.pause(); } catch (_) {}
+  player.removeAttribute("src");
+  player.load();
+  player.style.width = "";
+  player.style.height = "";
+
+  // El Worker puede entregar el archivo sin soporte completo de Range.
+  // En ese caso Android muestra la miniatura pero no inicia la reproducción.
+  // Descargamos el video como Blob y se lo damos al reproductor localmente.
+  player.setAttribute("aria-busy", "true");
+  player.dataset.loading = "true";
+
+  log("Preparando video para reproducción", {
+    name: getFileName(file),
+    url: getFileUrl(file)
+  });
+
+  try {
+    const response = await fetch(getFileUrl(file), {
+      method: "GET",
+      mode: "cors",
+      credentials: "omit",
+      cache: "no-store"
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+
+    const sourceBlob = await response.blob();
+
+    if (!sourceBlob.size) {
+      throw new Error("El archivo de video llegó vacío.");
+    }
+
+    if (token !== videoLoadToken) return;
+
+    const responseType = response.headers.get("content-type") || "";
+    const fileType = getContentType(file);
+    const finalType = responseType.startsWith("video/")
+      ? responseType
+      : (fileType.startsWith("video/") ? fileType : "video/mp4");
+
+    const playableBlob = sourceBlob.type === finalType
+      ? sourceBlob
+      : new Blob([sourceBlob], { type: finalType });
+
+    videoBlobUrl = URL.createObjectURL(playableBlob);
+    player.src = videoBlobUrl;
+    player.load();
+
+    player.addEventListener("loadedmetadata", () => {
+      if (token !== videoLoadToken) return;
+      fitFloatingVideo();
+    }, { once: true });
+
+    player.addEventListener("canplay", () => {
+      if (token !== videoLoadToken) return;
+      player.dataset.loading = "false";
+      player.removeAttribute("aria-busy");
+      log("Video listo para reproducir", {
+        name: getFileName(file),
+        bytes: sourceBlob.size,
+        type: finalType
+      });
+    }, { once: true });
+
+  } catch (error) {
+    if (token !== videoLoadToken) return;
+
+    player.dataset.loading = "false";
+    player.removeAttribute("aria-busy");
+
+    // Último intento: fuente directa. Esto permite reproducir servidores
+    // que sí soportan Range aunque el fetch CORS esté bloqueado.
     player.src = getFileUrl(file);
     player.load();
-    player.currentTime = 0;
+
+    log("FALLÓ CARGA BLOB; intentando fuente directa", {
+      name: getFileName(file),
+      message: error?.message || String(error)
+    });
   }
 
   requestAnimationFrame(fitFloatingVideo);
 }
-
 function moveVideo(direction) {
   if (videoFiles.length <= 1) return;
 
