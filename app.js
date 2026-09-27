@@ -287,6 +287,23 @@ async function deleteFile(file) {
     renderGallery();
     updateReceiptCard();
 
+    const photoResults = document.getElementById("photoResultsOverlay");
+    if (photoResults) {
+      const currentTitle = photoResults.querySelector("h2")?.textContent || "Todas las fotos";
+      const currentFiles = currentTitle === "Todas las fotos"
+        ? getImageFiles()
+        : getImageFiles().filter(file => getPhotoDayKey(file) === activePhotoDay);
+      closePhotoResults();
+      openPhotoResults(
+        currentFiles,
+        currentTitle,
+        currentTitle === "Todas las fotos"
+          ? `${currentFiles.length} ${currentFiles.length === 1 ? "foto almacenada" : "fotos almacenadas"}`
+          : `${currentFiles.length} ${currentFiles.length === 1 ? "foto de este día" : "fotos de este día"}`,
+        currentTitle === "Todas las fotos" ? null : activePhotoDay
+      );
+    }
+
     log("Archivo eliminado correctamente", { name });
 
   } catch (error) {
@@ -1152,6 +1169,63 @@ function closePhotoDayMenu() {
   photoDayMenuOpen = false;
 }
 
+function closePhotoResults() {
+  document.getElementById("photoResultsOverlay")?.remove();
+}
+
+function openPhotoResults(files, title, subtitle, dayKey = null) {
+  closePhotoResults();
+
+  const overlay = document.createElement("div");
+  overlay.id = "photoResultsOverlay";
+  overlay.className = "photo-results-overlay";
+
+  const safeTitle = escapeHtml(title || "Fotos");
+  const safeSubtitle = escapeHtml(subtitle || `${files.length} ${files.length === 1 ? "foto" : "fotos"}`);
+
+  overlay.innerHTML = `
+    <div class="photo-results-dialog" role="dialog" aria-modal="true" aria-label="${safeTitle}">
+      <div class="photo-results-head">
+        <div class="photo-results-head-main">
+          <span class="photo-results-eyebrow">CARPETA · FOTOS</span>
+          <h2>${safeTitle}</h2>
+          <p>${safeSubtitle}</p>
+        </div>
+        <button class="photo-results-close" type="button" aria-label="Cerrar">✕</button>
+      </div>
+      <div class="photo-results-toolbar">
+        <button class="photo-results-back" type="button">← Categorías</button>
+        <span>${files.length} ${files.length === 1 ? "archivo" : "archivos"}</span>
+      </div>
+      <div class="photo-results-grid"></div>
+    </div>`;
+
+  document.body.appendChild(overlay);
+
+  const grid = overlay.querySelector(".photo-results-grid");
+  if (grid) {
+    if (!files.length) {
+      grid.innerHTML = '<div class="photo-results-empty">No hay fotos para mostrar.</div>';
+    } else {
+      files.forEach(file => grid.appendChild(createFileElement(file)));
+    }
+  }
+
+  overlay.querySelector(".photo-results-close")?.addEventListener("click", closePhotoResults);
+  overlay.addEventListener("click", event => {
+    if (event.target === overlay) closePhotoResults();
+  });
+  overlay.querySelector(".photo-results-back")?.addEventListener("click", () => {
+    closePhotoResults();
+    openPhotoDayMenu();
+  });
+
+  log("Ventana de fotos abierta", {
+    modo: dayKey ? formatPhotoDay(dayKey) : "todas las fotos",
+    total: files.length
+  });
+}
+
 function openPhotoDayMenu() {
   if (photoDayMenuOpen) return;
   const groups = getPhotoDayGroups();
@@ -1193,12 +1267,21 @@ function openPhotoDayMenu() {
   overlay.querySelectorAll("[data-photo-day]").forEach(button => {
     button.addEventListener("click", () => {
       const key = button.dataset.photoDay;
+      const files = key === "all"
+        ? getImageFiles()
+        : getImageFiles().filter(file => getPhotoDayKey(file) === key);
+
       activeFilter = "image";
       activePhotoDay = key === "all" ? null : key;
       closePhotoDayMenu();
-      renderFiles();
-      document.querySelector(".panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
-      log("Fotos ordenadas por día", { dia: activePhotoDay || "todos" });
+
+      const title = key === "all" ? "Todas las fotos" : formatPhotoDay(key);
+      const subtitle = key === "all"
+        ? `${files.length} ${files.length === 1 ? "foto almacenada" : "fotos almacenadas"}`
+        : `${files.length} ${files.length === 1 ? "foto de este día" : "fotos de este día"}`;
+
+      openPhotoResults(files, title, subtitle, key === "all" ? null : key);
+      log("Fotos seleccionadas", { dia: activePhotoDay || "todos", total: files.length });
     });
   });
 }
@@ -2534,6 +2617,16 @@ initImageLightbox();
     .photo-day-icon{display:grid;place-items:center;width:48px;height:48px;border-radius:14px;background:linear-gradient(145deg,rgba(60,188,255,.2),rgba(95,83,255,.15));font-size:24px}
     .photo-day-text{min-width:0;display:grid;gap:4px}.photo-day-text b{overflow:hidden;color:#f4fbff;font-size:15px;text-overflow:ellipsis;white-space:nowrap}.photo-day-text small{color:#8ea5ba;font-size:13px}
     .photo-day-arrow{color:#66d9ff;font-size:30px;line-height:1}.photo-day-empty{padding:34px 16px;color:#91a6ba;text-align:center}
+    .photo-results-overlay{position:fixed;inset:0;z-index:100000;display:grid;place-items:center;padding:12px;background:rgba(2,7,15,.78);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);animation:photoDayFade .18s ease-out}
+    .photo-results-dialog{width:min(900px,100%);height:min(820px,92vh);display:flex;flex-direction:column;overflow:hidden;border:1px solid rgba(74,197,255,.46);border-radius:24px;background:linear-gradient(145deg,rgba(8,20,35,.99),rgba(4,11,22,.99));box-shadow:0 28px 90px rgba(0,0,0,.68),0 0 40px rgba(42,180,255,.12);animation:photoDayPop .22s cubic-bezier(.2,.8,.2,1)}
+    .photo-results-head{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:18px 18px 14px;border-bottom:1px solid rgba(110,190,235,.15)}
+    .photo-results-head-main{min-width:0}.photo-results-eyebrow{display:block;margin-bottom:4px;color:#63d8ff;font-size:10px;font-weight:800;letter-spacing:.18em}.photo-results-head h2{margin:0;color:#f3f9ff;font-size:clamp(21px,5vw,30px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.photo-results-head p{margin:4px 0 0;color:#8da2b7;font-size:14px}
+    .photo-results-close{flex:0 0 auto;width:48px;height:48px;border:1px solid rgba(91,207,255,.35);border-radius:15px;color:#eaf8ff;background:rgba(23,39,56,.78);font-size:25px;cursor:pointer}.photo-results-close:hover{background:rgba(30,54,75,.95);transform:scale(1.03)}
+    .photo-results-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 16px;color:#8ea5ba;font-size:13px;border-bottom:1px solid rgba(110,190,235,.1)}
+    .photo-results-back{border:1px solid rgba(91,207,255,.25);border-radius:12px;padding:8px 12px;color:#dff7ff;background:rgba(20,44,65,.72);font-weight:700;cursor:pointer}.photo-results-back:hover{border-color:rgba(91,207,255,.62);background:rgba(27,58,84,.9)}
+    .photo-results-grid{flex:1;overflow:auto;padding:14px;display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,320px),1fr));gap:12px;align-content:start}
+    .photo-results-grid .file{min-width:0}.photo-results-empty{grid-column:1/-1;display:grid;place-items:center;min-height:180px;color:#91a6ba;text-align:center}
+    @media(max-width:520px){.photo-results-overlay{padding:8px}.photo-results-dialog{height:94vh;border-radius:20px}.photo-results-head{padding:15px 13px 12px}.photo-results-grid{padding:10px;grid-template-columns:1fr;gap:10px}.photo-results-toolbar{padding:9px 11px}}
     @keyframes photoDayFade{from{opacity:0}to{opacity:1}}@keyframes photoDayPop{from{opacity:0;transform:translateY(10px) scale(.97)}to{opacity:1;transform:translateY(0) scale(1)}}
     @media(max-width:520px){.photo-day-overlay{padding:12px}.photo-day-dialog{border-radius:21px}.photo-day-head{padding:17px 15px 14px}.photo-day-list{padding:11px}.photo-day-option{min-height:64px}}
     @media(prefers-reduced-motion:reduce){.photo-day-overlay,.photo-day-dialog{animation:none}.photo-day-option{transition:none}}
