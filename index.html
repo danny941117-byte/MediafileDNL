@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#07111f">
+  <title>Mediafile DNL</title>
+
+  <style>
+    :root{
+      --bg:#060b13;
+      --panel:#0c1420;
+      --panel-2:#101b2a;
+      --line:#1d3045;
+      --text:#eef5ff;
+      --muted:#8fa4ba;
+      --accent:#38a8ff;
+      --accent-2:#1769ff;
+      --danger:#ff5364;
+      --ok:#34d399;
+      --radius:18px;
+    }
+
+    *{box-sizing:border-box}
+
+    html,body{
+      margin:0;
+      min-height:100%;
+      background:var(--bg);
+      color:var(--text);
+      font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+    }
+
+    body{
+      min-height:100vh;
+      overflow-x:hidden;
+    }
+
+    button{
+      font:inherit;
+    }
+
+    .app{
+      min-height:100vh;
+      display:flex;
+      flex-direction:column;
+    }
+
+    /* HEADER */
+    header{
+      position:sticky;
+      top:0;
+      z-index:20;
+      padding:16px;
+      background:rgba(6,11,19,.94);
+      border-bottom:1px solid var(--line);
+      backdrop-filter:blur(12px);
+    }
+
+    .brand{
+      display:flex;
+      align-items:center;
+      gap:12px;
+      max-width:1200px;
+      margin:auto;
+    }
+
+    .brand-icon{
+      width:46px;
+      height:46px;
+      border:1px solid #2f8fff;
+      border-radius:14px;
+      display:grid;
+      place-items:center;
+      background:linear-gradient(145deg,#102b4a,#07111f);
+      box-shadow:0 0 24px rgba(56,168,255,.14);
+      font-size:23px;
+    }
+
+    .brand h1{
+      margin:0;
+      font-size:20px;
+      letter-spacing:.4px;
+    }
+
+    .brand p{
+      margin:2px 0 0;
+      color:var(--muted);
+      font-size:12px;
+    }
+
+    /* CONTENT */
+    main{
+      width:min(1200px,100%);
+      margin:0 auto;
+      padding:18px 16px 100px;
+      flex:1;
+    }
+
+    .welcome{
+      padding:20px;
+      border:1px solid var(--line);
+      border-radius:var(--radius);
+      background:
+        radial-gradient(circle at 100% 0%,rgba(23,105,255,.18),transparent 38%),
+        linear-gradient(145deg,#0d1928,#09111d);
+      margin-bottom:18px;
+    }
+
+    .welcome h2{
+      margin:0 0 7px;
+      font-size:24px;
+    }
+
+    .welcome p{
+      margin:0;
+      color:var(--muted);
+      line-height:1.5;
+    }
+
+    .status{
+      display:inline-flex;
+      align-items:center;
+      gap:7px;
+      margin-top:15px;
+      padding:7px 11px;
+      border:1px solid var(--line);
+      border-radius:999px;
+      color:var(--muted);
+      font-size:12px;
+      background:#08111d;
+    }
+
+    .status-dot{
+      width:8px;
+      height:8px;
+      border-radius:50%;
+      background:#64748b;
+    }
+
+    /* CARDS */
+    .grid{
+      display:grid;
+      grid-template-columns:repeat(2,minmax(0,1fr));
+      gap:12px;
+    }
+
+    .card{
+      min-height:145px;
+      padding:18px;
+      border:1px solid var(--line);
+      border-radius:var(--radius);
+      background:var(--panel);
+      color:var(--text);
+      text-align:left;
+      cursor:pointer;
+      transition:.18s ease;
+      position:relative;
+      overflow:hidden;
+    }
+
+    .card::after{
+      content:"";
+      position:absolute;
+      width:90px;
+      height:90px;
+      right:-35px;
+      bottom:-35px;
+      border-radius:50%;
+      background:rgba(56,168,255,.08);
+    }
+
+    .card:hover{
+      border-color:#2e79ad;
+      transform:translateY(-1px);
+    }
+
+    .card:active{
+      transform:scale(.985);
+    }
+
+    .card-icon{
+      font-size:30px;
+      margin-bottom:12px;
+    }
+
+    .card h3{
+      margin:0 0 5px;
+      font-size:16px;
+    }
+
+    .card p{
+      margin:0;
+      color:var(--muted);
+      font-size:12px;
+      line-height:1.45;
+    }
+
+    .section-title{
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      margin:25px 2px 10px;
+    }
+
+    .section-title h2{
+      margin:0;
+      font-size:16px;
+    }
+
+    .section-title span{
+      color:var(--muted);
+      font-size:12px;
+    }
+
+    .info{
+      border:1px solid var(--line);
+      background:var(--panel);
+      border-radius:var(--radius);
+      padding:16px;
+      color:var(--muted);
+      font-size:13px;
+      line-height:1.55;
+    }
+
+    /* BOTTOM NAV */
+    nav{
+      position:fixed;
+      left:0;
+      right:0;
+      bottom:0;
+      z-index:30;
+      border-top:1px solid var(--line);
+      background:rgba(6,11,19,.96);
+      backdrop-filter:blur(12px);
+      padding:8px max(10px, env(safe-area-inset-right))
+               calc(8px + env(safe-area-inset-bottom))
+               max(10px, env(safe-area-inset-left));
+    }
+
+    .nav-inner{
+      max-width:700px;
+      margin:auto;
+      display:grid;
+      grid-template-columns:repeat(4,1fr);
+      gap:5px;
+    }
+
+    .nav-btn{
+      border:0;
+      background:transparent;
+      color:var(--muted);
+      padding:7px 4px;
+      border-radius:12px;
+      cursor:pointer;
+      font-size:11px;
+    }
+
+    .nav-btn .nav-icon{
+      display:block;
+      font-size:20px;
+      margin-bottom:2px;
+    }
+
+    .nav-btn.active{
+      color:var(--text);
+      background:#102033;
+    }
+
+    /* DIAGNOSTIC */
+    .diagnostic-toggle{
+      position:fixed;
+      right:12px;
+      bottom:82px;
+      z-index:40;
+      width:38px;
+      height:38px;
+      border-radius:50%;
+      border:1px solid var(--line);
+      background:#0b1624;
+      color:#8fa4ba;
+      cursor:pointer;
+      opacity:.72;
+    }
+
+    .diagnostic{
+      display:none;
+      position:fixed;
+      left:10px;
+      right:10px;
+      bottom:130px;
+      z-index:39;
+      max-height:45vh;
+      overflow:auto;
+      border:1px solid #29435e;
+      border-radius:16px;
+      background:#050a11;
+      box-shadow:0 20px 60px rgba(0,0,0,.5);
+      padding:14px;
+    }
+
+    .diagnostic.open{
+      display:block;
+    }
+
+    .diagnostic-header{
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      margin-bottom:10px;
+    }
+
+    .diagnostic-header strong{
+      font-size:13px;
+    }
+
+    .diagnostic-header button{
+      border:1px solid var(--line);
+      background:#0d1826;
+      color:var(--text);
+      border-radius:9px;
+      padding:5px 9px;
+      cursor:pointer;
+    }
+
+    pre{
+      margin:0;
+      white-space:pre-wrap;
+      word-break:break-word;
+      color:#b7d7f5;
+      font:12px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace;
+    }
+
+    /* DESKTOP */
+    @media (min-width:700px){
+      header{padding:18px 24px}
+      main{padding:28px 24px 50px}
+      .grid{grid-template-columns:repeat(4,minmax(0,1fr))}
+      .welcome{padding:28px}
+      nav{position:static;border-top:0;background:transparent;backdrop-filter:none;padding:0 24px 24px}
+      .nav-inner{border:1px solid var(--line);background:var(--panel);border-radius:16px;padding:6px}
+      .diagnostic-toggle{bottom:22px}
+      .diagnostic{bottom:70px;left:auto;width:430px}
+    }
+  </style>
+</head>
+
+<body>
+<div class="app">
+
+  <header>
+    <div class="brand">
+      <div class="brand-icon">🗂️</div>
+      <div>
+        <h1>Mediafile DNL</h1>
+        <p>Almacenamiento privado de archivos</p>
+      </div>
+    </div>
+  </header>
+
+  <main>
+
+    <section class="welcome">
+      <h2>Bienvenido 👋</h2>
+      <p>
+        Administra tus fotos, videos y comprobantes desde un solo lugar.
+        La conexión con el almacenamiento se integrará en los siguientes pasos.
+      </p>
+
+      <div class="status">
+        <span class="status-dot"></span>
+        Sistema en construcción
+      </div>
+    </section>
+
+    <div class="section-title">
+      <h2>Accesos principales</h2>
+      <span>v1.0</span>
+    </div>
+
+    <section class="grid">
+
+      <button class="card" onclick="abrirModulo('Fotos')">
+        <div class="card-icon">📸</div>
+        <h3>Fotos</h3>
+        <p>Imágenes almacenadas y archivos fotográficos.</p>
+      </button>
+
+      <button class="card" onclick="abrirModulo('Videos')">
+        <div class="card-icon">🎥</div>
+        <h3>Videos</h3>
+        <p>Videos privados disponibles para reproducción.</p>
+      </button>
+
+      <button class="card" onclick="abrirModulo('Comprobantes')">
+        <div class="card-icon">🧾</div>
+        <h3>Comprobantes</h3>
+        <p>Organiza fotografías y documentos de comprobantes.</p>
+      </button>
+
+      <button class="card" onclick="abrirModulo('Galería')">
+        <div class="card-icon">🖼️</div>
+        <h3>Galería</h3>
+        <p>Selecciona y organiza el contenido que quieres mostrar.</p>
+      </button>
+
+    </section>
+
+    <div class="section-title">
+      <h2>Estado del sistema</h2>
+      <span>Local</span>
+    </div>
+
+    <section class="info" id="mensaje">
+      Interfaz inicial cargada correctamente. El almacenamiento todavía no
+      está conectado desde esta pantalla.
+    </section>
+
+  </main>
+
+  <nav>
+    <div class="nav-inner">
+      <button class="nav-btn active" onclick="navegar(this,'Inicio')">
+        <span class="nav-icon">⌂</span>
+        Inicio
+      </button>
+
+      <button class="nav-btn" onclick="navegar(this,'Archivos')">
+        <span class="nav-icon">🗃️</span>
+        Archivos
+      </button>
+
+      <button class="nav-btn" onclick="navegar(this,'Galería')">
+        <span class="nav-icon">🖼️</span>
+        Galería
+      </button>
+
+      <button class="nav-btn" onclick="navegar(this,'Configuración')">
+        <span class="nav-icon">⚙️</span>
+        Config.
+      </button>
+    </div>
+  </nav>
+
+  <button class="diagnostic-toggle" onclick="toggleDiagnostico()" aria-label="Diagnóstico">
+    🛠️
+  </button>
+
+  <section class="diagnostic" id="diagnostic">
+    <div class="diagnostic-header">
+      <strong>🛠️ Panel de diagnóstico</strong>
+      <button onclick="limpiarDiagnostico()">Limpiar</button>
+    </div>
+    <pre id="diagnosticText"></pre>
+  </section>
+
+</div>
+
+<script>
+  "use strict";
+
+  const diagnostico = {
+    sistema: "Mediafile DNL",
+    version: "1.0",
+    inicio: new Date().toISOString(),
+    interfaz: "OK",
+    worker: "PENDIENTE",
+    backblaze: "PENDIENTE",
+    errores: []
+  };
+
+  const diagnosticText = document.getElementById("diagnosticText");
+  const mensaje = document.getElementById("mensaje");
+
+  function registrar(evento, datos = {}) {
+    diagnostico.ultimoEvento = evento;
+    diagnostico.detalles = datos;
+    diagnosticText.textContent = JSON.stringify(diagnostico, null, 2);
+  }
+
+  function abrirModulo(nombre) {
+    mensaje.textContent =
+      "Módulo seleccionado: " + nombre +
+      ". La función se conectará en los siguientes pasos.";
+
+    registrar("Módulo seleccionado", { modulo: nombre });
+  }
+
+  function navegar(boton, nombre) {
+    document.querySelectorAll(".nav-btn")
+      .forEach(btn => btn.classList.remove("active"));
+
+    boton.classList.add("active");
+
+    mensaje.textContent =
+      "Sección seleccionada: " + nombre +
+      ". Esta sección se habilitará progresivamente.";
+
+    registrar("Navegación", { seccion: nombre });
+  }
+
+  function toggleDiagnostico() {
+    document.getElementById("diagnostic")
+      .classList.toggle("open");
+
+    registrar("Panel de diagnóstico abierto");
+  }
+
+  function limpiarDiagnostico() {
+    diagnostico.ultimoEvento = "Diagnóstico limpiado";
+    diagnostico.detalles = {};
+    diagnostico.errores = [];
+    diagnosticText.textContent =
+      JSON.stringify(diagnostico, null, 2);
+  }
+
+  window.addEventListener("error", event => {
+    diagnostico.errores.push({
+      tipo: "JavaScript",
+      mensaje: event.message,
+      archivo: event.filename || null,
+      linea: event.lineno || null
+    });
+
+    diagnosticText.textContent =
+      JSON.stringify(diagnostico, null, 2);
+  });
+
+  window.addEventListener("unhandledrejection", event => {
+    diagnostico.errores.push({
+      tipo: "Promise",
+      mensaje: String(event.reason)
+    });
+
+    diagnosticText.textContent =
+      JSON.stringify(diagnostico, null, 2);
+  });
+
+  registrar("Interfaz inicial cargada");
+</script>
+
+</body>
+</html>
