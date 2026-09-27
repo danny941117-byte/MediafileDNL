@@ -19,7 +19,7 @@ if (document.readyState === "loading") {
 
 const CONFIG = {
   API_URL: "https://m-e2a5ediafile-dnl.danny941117.workers.dev",
-  VERSION: "1.6.0"
+  VERSION: "1.9.1"
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -407,34 +407,79 @@ function openFile(file) {
 // DESCARGAR ARCHIVO
 // ============================================================
 
-function downloadFile(file) {
-  const url =
-    getFileUrl(file);
+async function downloadFile(file) {
+  const url = getFileUrl(file);
+  const name = getFileName(file);
 
-  const name =
-    getFileName(file);
+  log("Descargando archivo como Blob", {
+    name,
+    url
+  });
 
-  log(
-    "Descargando archivo",
-    {
-      name,
-      url
+  try {
+    // IMPORTANTE:
+    // El atributo <a download> no es fiable cuando la URL
+    // pertenece a otro dominio. Aquí primero obtenemos el
+    // archivo mediante fetch y luego creamos una URL local.
+    const response = await fetch(url, {
+      method: "GET",
+      mode: "cors",
+      cache: "no-store"
+    });
+
+    log("Respuesta de descarga", {
+      status: response.status,
+      ok: response.ok,
+      contentType: response.headers.get("content-type"),
+      contentLength: response.headers.get("content-length")
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
     }
-  );
 
-  const link =
-    document.createElement("a");
+    const blob = await response.blob();
 
-  link.href = url;
-  link.download = name;
-  link.target = "_blank";
-  link.rel = "noopener";
+    if (!blob || !blob.size) {
+      throw new Error("El archivo descargado está vacío.");
+    }
 
-  document.body.appendChild(link);
+    const blobUrl = URL.createObjectURL(blob);
 
-  link.click();
+    const link = document.createElement("a");
+    link.href = blobUrl;
+    link.download = name;
+    link.style.display = "none";
 
-  link.remove();
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+
+    // No revocar inmediatamente: Android/Chrome puede necesitar
+    // unos instantes para iniciar la descarga.
+    setTimeout(() => {
+      URL.revokeObjectURL(blobUrl);
+    }, 15000);
+
+    log("DESCARGA INICIADA CORRECTAMENTE", {
+      name,
+      size: blob.size,
+      type: blob.type || "desconocido"
+    });
+
+  } catch (error) {
+    log("ERROR DE DESCARGA", {
+      name,
+      url,
+      message: error?.message || String(error)
+    });
+
+    alert(
+      "No se pudo descargar el archivo.\n\n" +
+      (error?.message || "Error desconocido") +
+      "\n\nRevisa el panel de Diagnóstico."
+    );
+  }
 }
 
 
