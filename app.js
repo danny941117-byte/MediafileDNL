@@ -1551,6 +1551,11 @@ function ensureFloatingVideoStyles() {
   const style = document.createElement("style");
   style.id = "mediafile-video-floating-styles";
   style.textContent = `
+    /* El atributo hidden debe ganar incluso frente a display: grid !important. */
+    #videoLightbox.video-lightbox[hidden] {
+      display: none !important;
+    }
+
     #videoLightbox.video-lightbox {
       position: fixed !important;
       inset: 0 !important;
