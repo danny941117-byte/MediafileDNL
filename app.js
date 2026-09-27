@@ -720,15 +720,30 @@ function createFileElement(file) {
         <button
           class="mediafile-preview"
           type="button"
+          aria-label="Vista previa"
           style="
             border:0;
-            border-radius:9px;
-            padding:8px 12px;
+            border-radius:12px;
+            padding:0;
             cursor:pointer;
             font-weight:700;
+            width:150px;
+            height:82px;
+            overflow:hidden;
+            position:relative;
+            background:#10251c;
+            display:flex;
+            align-items:center;
+            justify-content:center;
           "
         >
-          👁️ Vista previa
+          <span class="mediafile-thumb-placeholder"
+            style="
+              color:#d8eee4;
+              font-size:28px;
+              line-height:1;
+            "
+          >👁️</span>
         </button>
 
         <button
@@ -764,6 +779,126 @@ function createFileElement(file) {
     element.querySelector(
       ".mediafile-download"
     );
+
+  // ==========================================================
+  // MINIATURA
+  // Reemplaza el botón "👁️ Vista previa" por una miniatura
+  // real cuando el archivo es una imagen o un video.
+  // ==========================================================
+
+  const thumbButton =
+    previewButton;
+
+  if (kind === "image") {
+
+    const thumb =
+      document.createElement("img");
+
+    thumb.src = getFileUrl(file);
+    thumb.alt = name;
+    thumb.loading = "lazy";
+
+    thumb.style.cssText = `
+      width:100%;
+      height:100%;
+      object-fit:cover;
+      display:block;
+    `;
+
+    thumb.addEventListener(
+      "error",
+      () => {
+        thumb.remove();
+
+        const placeholder =
+          document.createElement("span");
+
+        placeholder.textContent = "🖼️";
+        placeholder.style.cssText = `
+          font-size:32px;
+        `;
+
+        thumbButton.appendChild(
+          placeholder
+        );
+      }
+    );
+
+    thumbButton.innerHTML = "";
+    thumbButton.appendChild(thumb);
+
+    // Pequeña etiqueta sobre la miniatura.
+    const badge =
+      document.createElement("span");
+
+    badge.textContent = "👁";
+    badge.style.cssText = `
+      position:absolute;
+      right:5px;
+      bottom:5px;
+      width:27px;
+      height:27px;
+      border-radius:50%;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      background:rgba(0,0,0,.70);
+      color:white;
+      font-size:15px;
+    `;
+
+    thumbButton.appendChild(badge);
+
+  } else if (kind === "video") {
+
+    const video =
+      document.createElement("video");
+
+    video.src = getFileUrl(file);
+    video.muted = true;
+    video.playsInline = true;
+    video.preload = "metadata";
+
+    video.style.cssText = `
+      width:100%;
+      height:100%;
+      object-fit:cover;
+      display:block;
+      background:#000;
+      pointer-events:none;
+    `;
+
+    thumbButton.innerHTML = "";
+    thumbButton.appendChild(video);
+
+    const badge =
+      document.createElement("span");
+
+    badge.textContent = "▶";
+    badge.style.cssText = `
+      position:absolute;
+      left:50%;
+      top:50%;
+      transform:translate(-50%,-50%);
+      width:34px;
+      height:34px;
+      border-radius:50%;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      background:rgba(0,0,0,.72);
+      color:white;
+      font-size:16px;
+    `;
+
+    thumbButton.appendChild(badge);
+
+  } else {
+
+    // Los demás archivos conservan el icono de vista previa.
+    thumbButton.innerHTML =
+      '<span style="font-size:28px">👁️</span>';
+  }
 
 
   openButton.addEventListener(
