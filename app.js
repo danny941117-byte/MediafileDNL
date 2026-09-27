@@ -1114,21 +1114,34 @@ function renderFiles() {
   const title =
     $("#listTitle");
 
+  const folderPathName =
+    $("#folderPathName");
+
+  const currentFolderName =
+    activeFilter === "image"
+      ? "Fotos"
+      : activeFilter === "video"
+        ? "Videos"
+        : activeFilter === "audio"
+          ? "Audios"
+          : activeFilter === "pdf"
+            ? "PDF"
+            : activeFilter === "receipt"
+              ? "Comprobantes"
+              : "Todos";
+
 
   if (title) {
-
     title.textContent =
-      activeFilter === "image"
-        ? "Fotos"
-        : activeFilter === "video"
-          ? "Videos"
-          : activeFilter === "audio"
-            ? "Audios"
-            : activeFilter === "pdf"
-              ? "PDF"
-              : activeFilter === "receipt"
-                ? "Comprobantes"
-                : "Todos los archivos";
+      currentFolderName === "Todos"
+        ? "Todos los archivos"
+        : currentFolderName;
+  }
+
+  // Actualiza únicamente la ruta visual del explorador.
+  // No cambia el filtro ni la lógica de archivos.
+  if (folderPathName) {
+    folderPathName.textContent = currentFolderName;
   }
 
 
