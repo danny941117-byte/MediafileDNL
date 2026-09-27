@@ -11,7 +11,7 @@ if (document.readyState === "loading") {
 
 /*
   Mediafile DNL - frontend
-  VERSION 1.6.0
+  VERSION 1.6.1
 
   El navegador NO contiene claves de Backblaze.
   Todo pasa por el Worker API.
@@ -19,7 +19,7 @@ if (document.readyState === "loading") {
 
 const CONFIG = {
   API_URL: "https://m-e2a5ediafile-dnl.danny941117.workers.dev",
-  VERSION: "1.6.0"
+  VERSION: "1.6.1"
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -502,8 +502,8 @@ function previewFile(file) {
   modal.style.cssText = `
     position:fixed;
     inset:0;
-    z-index:99999;
-    background:rgba(0,0,0,.88);
+    z-index:100020;
+    background:rgba(0,0,0,.90);
     display:flex;
     align-items:center;
     justify-content:center;
@@ -811,7 +811,8 @@ function createFileElement(file) {
     document.createElement("div");
 
   element.className =
-    "file mediafile-file";
+    "file mediafile-file" +
+    (document.getElementById("photoResultsOverlay") ? " photo-results-file" : "");
 
 
   element.innerHTML = `
@@ -1063,13 +1064,34 @@ function createFileElement(file) {
 
   openButton.addEventListener(
     "click",
-    () => openFile(file)
+    (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+
+      if (kind === "image" && document.getElementById("photoResultsOverlay")) {
+        openImageLightbox(file);
+        return;
+      }
+
+      openFile(file);
+    }
   );
 
 
   previewButton.addEventListener(
     "click",
-    () => {
+    (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+
+      // Las imágenes usan el visor principal de imágenes.
+      // Esto evita que la vista previa quede detrás de la ventana
+      // flotante "Todas las fotos" y permite navegar entre fotos.
+      if (kind === "image") {
+        openImageLightbox(file);
+        return;
+      }
+
       if (kind === "video") {
         openVideoLightbox(file);
       } else {
@@ -2626,7 +2648,22 @@ initImageLightbox();
     .photo-results-back{border:1px solid rgba(91,207,255,.25);border-radius:12px;padding:8px 12px;color:#dff7ff;background:rgba(20,44,65,.72);font-weight:700;cursor:pointer}.photo-results-back:hover{border-color:rgba(91,207,255,.62);background:rgba(27,58,84,.9)}
     .photo-results-grid{flex:1;overflow:auto;padding:14px;display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,320px),1fr));gap:12px;align-content:start}
     .photo-results-grid .file{min-width:0}.photo-results-empty{grid-column:1/-1;display:grid;place-items:center;min-height:180px;color:#91a6ba;text-align:center}
-    @media(max-width:520px){.photo-results-overlay{padding:8px}.photo-results-dialog{height:94vh;border-radius:20px}.photo-results-head{padding:15px 13px 12px}.photo-results-grid{padding:10px;grid-template-columns:1fr;gap:10px}.photo-results-toolbar{padding:9px 11px}}
+    /* Tarjetas de fotos: ordenadas y cómodas en móvil */
+    .photo-results-file{display:flex!important;flex-direction:column!important;gap:10px!important;padding:12px!important;border:1px solid rgba(74,197,255,.20)!important;border-radius:18px!important;background:linear-gradient(145deg,rgba(10,24,40,.96),rgba(5,13,24,.98))!important;box-shadow:0 10px 28px rgba(0,0,0,.24)!important;overflow:hidden!important}
+    .photo-results-file .file-type{display:none!important}
+    .photo-results-file .file-info{display:flex!important;flex-direction:column!important;min-width:0!important;gap:7px!important}
+    .photo-results-file .file-name{font-size:15px!important;font-weight:800!important;line-height:1.25!important;overflow:hidden!important;text-overflow:ellipsis!important;white-space:nowrap!important}
+    .photo-results-file .file-meta{font-size:11px!important;color:#829bb0!important}
+    .photo-results-file .mediafile-actions{display:grid!important;grid-template-columns:1fr 1fr!important;gap:8px!important;margin-top:4px!important}
+    .photo-results-file .mediafile-actions>button{width:100%!important;min-width:0!important;min-height:42px!important}
+    .photo-results-file .mediafile-preview{grid-column:1 / -1!important;width:100%!important;height:210px!important;border:1px solid rgba(82,216,255,.16)!important;border-radius:14px!important;background:#071321!important;order:-1!important}
+    .photo-results-file .mediafile-preview img{width:100%!important;height:100%!important;object-fit:contain!important;background:#02070d!important}
+    .photo-results-file .mediafile-open{background:rgba(82,216,255,.12)!important;color:#dff8ff!important;border:1px solid rgba(82,216,255,.24)!important}
+    .photo-results-file .mediafile-download{background:rgba(82,216,255,.10)!important;color:#dff8ff!important;border:1px solid rgba(82,216,255,.20)!important}
+    .photo-results-file .mediafile-delete{background:#8f2020!important;color:#fff!important;border:1px solid rgba(255,120,120,.22)!important}
+    .mediafile-modal{z-index:100020!important}
+    .mediafile-modal img{max-width:100%!important;max-height:calc(92dvh - 110px)!important;object-fit:contain!important}
+    @media(max-width:520px){.photo-results-overlay{padding:8px}.photo-results-dialog{height:94vh;border-radius:20px}.photo-results-head{padding:15px 13px 12px}.photo-results-grid{padding:10px;grid-template-columns:1fr;gap:10px}.photo-results-toolbar{padding:9px 11px}.photo-results-file .mediafile-preview{height:200px!important}.photo-results-file .mediafile-actions{grid-template-columns:1fr 1fr!important}.photo-results-file .mediafile-actions>button{font-size:13px!important;padding:9px 8px!important}}
     @keyframes photoDayFade{from{opacity:0}to{opacity:1}}@keyframes photoDayPop{from{opacity:0;transform:translateY(10px) scale(.97)}to{opacity:1;transform:translateY(0) scale(1)}}
     @media(max-width:520px){.photo-day-overlay{padding:12px}.photo-day-dialog{border-radius:21px}.photo-day-head{padding:17px 15px 14px}.photo-day-list{padding:11px}.photo-day-option{min-height:64px}}
     @media(prefers-reduced-motion:reduce){.photo-day-overlay,.photo-day-dialog{animation:none}.photo-day-option{transition:none}}
