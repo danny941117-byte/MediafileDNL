@@ -1576,24 +1576,71 @@ function lightboxMove(direction) {
   renderLightbox();
 }
 
-function downloadCurrentLightboxImage() {
+async function downloadCurrentLightboxImage() {
   if (!galleryImages.length) return;
 
   const file = galleryImages[lightboxIndex];
   const url = getFileUrl(file);
+  const name = getFileName(file);
+  const button = $("#lightboxDownload");
 
-  const link = document.createElement("a");
-  link.href = url;
-  link.target = "_blank";
-  link.rel = "noopener";
-  link.download = getFileName(file);
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
+  try {
+    if (button) {
+      button.disabled = true;
+      button.textContent = "⏳ Descargando…";
+    }
 
-  log("Descarga solicitada desde visor", {
-    name: getFileName(file)
-  });
+    // El atributo download no siempre funciona con URLs de otro dominio.
+    // Descargamos el archivo como Blob y creamos una URL local para forzar
+    // la descarga en Android/Chrome sin abrir otra pestaña.
+    const response = await fetch(url, {
+      method: "GET",
+      mode: "cors",
+      cache: "no-store"
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+
+    const blob = await response.blob();
+    const blobUrl = URL.createObjectURL(blob);
+
+    const link = document.createElement("a");
+    link.href = blobUrl;
+    link.download = name;
+    link.style.display = "none";
+
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+
+    setTimeout(() => {
+      URL.revokeObjectURL(blobUrl);
+    }, 5000);
+
+    log("Descarga iniciada correctamente", {
+      name,
+      size: blob.size,
+      type: blob.type
+    });
+
+  } catch (error) {
+    log("ERROR DE DESCARGA", {
+      name,
+      message: error?.message || String(error)
+    });
+
+    // Si el navegador bloquea la descarga Blob, mostramos un aviso
+    // en lugar de abrir silenciosamente una pestaña nueva.
+    alert("No se pudo iniciar la descarga. Revisa el diagnóstico.");
+
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = "⬇️ Descargar";
+    }
+  }
 }
 
 function initImageLightbox() {
