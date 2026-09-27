@@ -19,7 +19,7 @@ if (document.readyState === "loading") {
 
 const CONFIG = {
   API_URL: "https://m-e2a5ediafile-dnl.danny941117.workers.dev",
-  VERSION: "2.0.1",
+  VERSION: "2.0.2",
   // Capacidad de referencia del almacenamiento B2 gratuito que estamos usando.
   // Si el bucket tiene otra capacidad, cambia solamente este valor.
   STORAGE_LIMIT_BYTES: 10 * 1024 * 1024 * 1024
@@ -1073,29 +1073,6 @@ function createFileElement(file) {
       });
     });
 
-    const badge =
-      document.createElement("span");
-
-    badge.textContent = "▶";
-    badge.style.cssText = `
-      position:absolute;
-      left:50%;
-      top:50%;
-      transform:translate(-50%,-50%);
-      width:44px;
-      height:44px;
-      border-radius:50%;
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      background:rgba(0,0,0,.72);
-      color:white;
-      font-size:20px;
-      pointer-events:none;
-      z-index:2;
-    `;
-
-    thumbButton.appendChild(badge);
 
   } else {
 
