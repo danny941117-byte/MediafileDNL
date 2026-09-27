@@ -19,7 +19,7 @@ if (document.readyState === "loading") {
 
 const CONFIG = {
   API_URL: "https://m-e2a5ediafile-dnl.danny941117.workers.dev",
-  VERSION: "1.9.4",
+  VERSION: "1.9.5",
   // Capacidad de referencia del almacenamiento B2 gratuito que estamos usando.
   // Si el bucket tiene otra capacidad, cambia solamente este valor.
   STORAGE_LIMIT_BYTES: 10 * 1024 * 1024 * 1024,
@@ -1251,11 +1251,11 @@ function openPhotoResults(files, title, subtitle, dayKey = null) {
 
   const grid = overlay.querySelector(".photo-results-grid");
   if (grid) {
-    if (!files.length) {
-      grid.innerHTML = '<div class="photo-results-empty">No hay fotos para mostrar.</div>';
-    } else {
-      files.forEach(file => grid.appendChild(createFileElement(file)));
-    }
+    renderSwipePages(
+      grid,
+      files,
+      "No hay fotos para mostrar."
+    );
   }
 
   overlay.querySelector(".photo-results-close")?.addEventListener("click", closePhotoResults);
@@ -1384,19 +1384,66 @@ function enforceMediaCardControls(card, file) {
   return card;
 }
 
-function renderMediaResultsGrid(overlay, files, emptyText) {
-  const grid = overlay?.querySelector(".photo-results-grid");
+function renderSwipePages(grid, files, emptyText) {
   if (!grid) return;
+
   grid.innerHTML = "";
+
   if (!files.length) {
     grid.innerHTML = `<div class="photo-results-empty">${escapeHtml(emptyText || "No hay archivos para mostrar.")}</div>`;
     return;
   }
-  files.forEach(file => {
-    const card = createFileElement(file);
-    grid.appendChild(card);
-    enforceMediaCardControls(card, file);
-  });
+
+  // 10 archivos por sección: 2 columnas x 5 filas.
+  const PAGE_SIZE = 10;
+  const totalPages = Math.ceil(files.length / PAGE_SIZE);
+
+  for (let pageIndex = 0; pageIndex < totalPages; pageIndex++) {
+    const pageFiles = files.slice(
+      pageIndex * PAGE_SIZE,
+      (pageIndex + 1) * PAGE_SIZE
+    );
+
+    const page = document.createElement("section");
+    page.className = "media-swipe-page";
+    page.dataset.page = String(pageIndex + 1);
+    page.setAttribute("aria-label", `Sección ${pageIndex + 1} de ${totalPages}`);
+
+    pageFiles.forEach(file => {
+      const card = createFileElement(file);
+      card.classList.add("media-swipe-card");
+      page.appendChild(card);
+      enforceMediaCardControls(card, file);
+    });
+
+    grid.appendChild(page);
+  }
+
+  const indicator = document.createElement("div");
+  indicator.className = "media-swipe-indicator";
+  indicator.textContent = totalPages > 1
+    ? `1 / ${totalPages}  ·  desliza ↑`
+    : "1 / 1";
+  grid.appendChild(indicator);
+
+  const updateIndicator = () => {
+    const pageHeight = grid.clientHeight || 1;
+    const current = Math.min(
+      totalPages,
+      Math.max(1, Math.round(grid.scrollTop / pageHeight) + 1)
+    );
+    indicator.textContent = totalPages > 1
+      ? `${current} / ${totalPages}  ·  desliza ↑`
+      : "1 / 1";
+  };
+
+  grid.addEventListener("scroll", updateIndicator, { passive: true });
+} 
+
+function renderMediaResultsGrid(overlay, files, emptyText) {
+  const grid = overlay?.querySelector(".photo-results-grid");
+  if (!grid) return;
+  renderSwipePages(grid, files, emptyText);
 }
 
 function openMediaResults(filter = activeFilter) {
@@ -2943,8 +2990,152 @@ initImageLightbox();
     .photo-results-close{flex:0 0 auto;width:48px;height:48px;border:1px solid rgba(91,207,255,.35);border-radius:15px;color:#eaf8ff;background:rgba(23,39,56,.78);font-size:25px;cursor:pointer}.photo-results-close:hover{background:rgba(30,54,75,.95);transform:scale(1.03)}
     .photo-results-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 16px;color:#8ea5ba;font-size:13px;border-bottom:1px solid rgba(110,190,235,.1)}
     .photo-results-back{border:1px solid rgba(91,207,255,.25);border-radius:12px;padding:8px 12px;color:#dff7ff;background:rgba(20,44,65,.72);font-weight:700;cursor:pointer}.photo-results-back:hover{border-color:rgba(91,207,255,.62);background:rgba(27,58,84,.9)}
-    .photo-results-grid{flex:1;overflow:auto;padding:14px;display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,320px),1fr));gap:12px;align-content:start}
-    .photo-results-grid .file{min-width:0}.photo-results-empty{grid-column:1/-1;display:grid;place-items:center;min-height:180px;color:#91a6ba;text-align:center}
+    /* v1.9.5 — 2 columnas x 5 archivos por sección + swipe vertical tipo TikTok */
+    .photo-results-grid{
+      flex:1;
+      min-height:0;
+      overflow-y:auto;
+      overflow-x:hidden;
+      padding:8px;
+      display:flex!important;
+      flex-direction:column;
+      gap:0;
+      scroll-snap-type:y mandatory;
+      scroll-behavior:smooth;
+      overscroll-behavior-y:contain;
+      -webkit-overflow-scrolling:touch;
+      scrollbar-width:none;
+      position:relative;
+    }
+    .photo-results-grid::-webkit-scrollbar{display:none}
+    .media-swipe-page{
+      flex:0 0 100%;
+      min-height:100%;
+      height:100%;
+      box-sizing:border-box;
+      display:grid;
+      grid-template-columns:repeat(2,minmax(0,1fr));
+      grid-template-rows:repeat(5,minmax(0,1fr));
+      gap:7px;
+      scroll-snap-align:start;
+      scroll-snap-stop:always;
+    }
+    .photo-results-grid .file{min-width:0}
+    .photo-results-empty{
+      width:100%;
+      height:100%;
+      display:grid;
+      place-items:center;
+      min-height:180px;
+      color:#91a6ba;
+      text-align:center;
+    }
+    .media-swipe-indicator{
+      position:sticky;
+      z-index:20;
+      bottom:7px;
+      align-self:center;
+      margin-top:-28px;
+      min-width:86px;
+      width:max-content;
+      padding:5px 10px;
+      border:1px solid rgba(91,207,255,.25);
+      border-radius:999px;
+      background:rgba(3,12,22,.84);
+      color:#9eddf5;
+      font-size:10px;
+      font-weight:800;
+      letter-spacing:.04em;
+      text-align:center;
+      pointer-events:none;
+      backdrop-filter:blur(8px);
+    }
+
+    /* Tarjetas compactas para que entren exactamente 5 filas en pantalla. */
+    .media-swipe-page .photo-results-file{
+      width:auto!important;
+      height:auto!important;
+      min-height:0!important;
+      padding:6px!important;
+      gap:3px!important;
+      border-radius:12px!important;
+      box-shadow:0 6px 15px rgba(0,0,0,.20)!important;
+      overflow:hidden!important;
+    }
+    .media-swipe-page .photo-results-file .file-info{
+      min-height:0!important;
+      gap:2px!important;
+      overflow:hidden!important;
+    }
+    .media-swipe-page .photo-results-file .file-name{
+      font-size:11px!important;
+      line-height:1.12!important;
+      font-weight:800!important;
+      white-space:nowrap!important;
+      overflow:hidden!important;
+      text-overflow:ellipsis!important;
+    }
+    .media-swipe-page .photo-results-file .file-meta{
+      font-size:8.5px!important;
+      line-height:1.1!important;
+      white-space:nowrap!important;
+      overflow:hidden!important;
+      text-overflow:ellipsis!important;
+    }
+    .media-swipe-page .photo-results-file .mediafile-actions{
+      display:grid!important;
+      grid-template-columns:repeat(4,minmax(0,1fr))!important;
+      gap:3px!important;
+      margin-top:2px!important;
+      flex:0 0 27px!important;
+    }
+    .media-swipe-page .photo-results-file .mediafile-actions>button{
+      min-width:0!important;
+      width:100%!important;
+      min-height:27px!important;
+      height:27px!important;
+      padding:0!important;
+      border-radius:7px!important;
+      font-size:0!important;
+      line-height:1!important;
+    }
+    .media-swipe-page .photo-results-file .mediafile-open::before{
+      content:"↗";
+      font-size:14px;
+    }
+    .media-swipe-page .photo-results-file .mediafile-download::before{
+      content:"⬇";
+      font-size:13px;
+    }
+    .media-swipe-page .photo-results-file .mediafile-delete::before{
+      content:"🗑";
+      font-size:12px;
+    }
+    .media-swipe-page .photo-results-file .mediafile-preview{
+      width:100%!important;
+      height:auto!important;
+      min-height:0!important;
+      flex:1 1 auto!important;
+      grid-column:1 / -1!important;
+      order:-1!important;
+      border-radius:8px!important;
+      margin:0!important;
+      min-height:44px!important;
+      max-height:62px!important;
+    }
+    .media-swipe-page .photo-results-file .mediafile-preview img,
+    .media-swipe-page .photo-results-file .mediafile-preview video{
+      width:100%!important;
+      height:100%!important;
+      object-fit:cover!important;
+      background:#02070d!important;
+    }
+    .media-swipe-page .photo-results-file .mediafile-preview .mediafile-thumb-placeholder{
+      font-size:20px!important;
+    }
+    .media-swipe-page .photo-results-file .mediafile-preview span{
+      transform:scale(.7);
+    }
     /* Tarjetas de fotos: ordenadas y cómodas en móvil */
     .photo-results-file{display:flex!important;flex-direction:column!important;gap:10px!important;padding:12px!important;border:1px solid rgba(74,197,255,.20)!important;border-radius:18px!important;background:linear-gradient(145deg,rgba(10,24,40,.96),rgba(5,13,24,.98))!important;box-shadow:0 10px 28px rgba(0,0,0,.24)!important;overflow:hidden!important}
     .photo-results-file .file-type{display:none!important}
@@ -2993,7 +3184,19 @@ initImageLightbox();
 
     .mediafile-modal{z-index:100020!important}
     .mediafile-modal img{max-width:100%!important;max-height:calc(92dvh - 110px)!important;object-fit:contain!important}
-    @media(max-width:520px){.photo-results-overlay{padding:8px}.photo-results-dialog{height:94vh;border-radius:20px}.photo-results-head{padding:15px 13px 12px}.photo-results-grid{padding:10px;grid-template-columns:1fr;gap:10px}.photo-results-toolbar{padding:9px 11px}.photo-results-file .mediafile-preview{height:200px!important}.photo-results-file .mediafile-actions{grid-template-columns:1fr 1fr!important}.photo-results-file .mediafile-actions>button{font-size:13px!important;padding:9px 8px!important}}
+    @media(max-width:520px){
+      .photo-results-overlay{padding:6px}
+      .photo-results-dialog{height:95dvh;border-radius:20px}
+      .photo-results-head{padding:13px 11px 10px}
+      .photo-results-toolbar{padding:8px 10px}
+      .photo-results-grid{padding:7px;gap:0}
+      .media-swipe-page{grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:repeat(5,minmax(0,1fr));gap:6px}
+      .media-swipe-page .photo-results-file .mediafile-preview{min-height:38px!important;max-height:55px!important}
+      .media-swipe-page .photo-results-file .mediafile-actions{grid-template-columns:repeat(4,minmax(0,1fr))!important}
+      .media-swipe-page .photo-results-file .mediafile-actions>button{min-height:25px!important;height:25px!important}
+      .media-swipe-page .photo-results-file .file-name{font-size:10.5px!important}
+      .media-swipe-page .photo-results-file .file-meta{font-size:8px!important}
+    }
     @keyframes photoDayFade{from{opacity:0}to{opacity:1}}@keyframes photoDayPop{from{opacity:0;transform:translateY(10px) scale(.97)}to{opacity:1;transform:translateY(0) scale(1)}}
     @media(max-width:520px){.photo-day-overlay{padding:12px}.photo-day-dialog{border-radius:21px}.photo-day-head{padding:17px 15px 14px}.photo-day-list{padding:11px}.photo-day-option{min-height:64px}}
     @media(prefers-reduced-motion:reduce){.photo-day-overlay,.photo-day-dialog{animation:none}.photo-day-option{transition:none}}
