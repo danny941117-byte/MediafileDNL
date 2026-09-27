@@ -116,6 +116,38 @@
       </div>
     </div>
 
-<script src="app.js?v=1.6.3"></script>
+<script src="app.js?v=1.8.1"></script>
+
+    <!-- VISOR DE VIDEO -->
+    <div id="videoLightbox" class="video-lightbox" hidden>
+      <div class="video-backdrop" data-video-close></div>
+
+      <div class="video-dialog" role="dialog" aria-modal="true" aria-label="Reproductor de video">
+        <div class="video-topbar">
+          <div id="videoLightboxTitle" class="video-title">Video</div>
+          <button id="videoLightboxClose" class="video-close" type="button" aria-label="Cerrar">✕</button>
+        </div>
+
+        <div class="video-stage">
+          <button id="videoLightboxPrev" class="video-arrow video-prev" type="button" aria-label="Video anterior">‹</button>
+
+          <video
+            id="videoLightboxPlayer"
+            class="video-player"
+            controls
+            playsinline
+            preload="metadata">
+          </video>
+
+          <button id="videoLightboxNext" class="video-arrow video-next" type="button" aria-label="Video siguiente">›</button>
+        </div>
+
+        <div class="video-bottom">
+          <span id="videoLightboxCounter">1 / 1</span>
+          <button id="videoLightboxDownload" class="video-download" type="button">⬇️ Descargar</button>
+        </div>
+      </div>
+    </div>
+
 </body>
 </html>

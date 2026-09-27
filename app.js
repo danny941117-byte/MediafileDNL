@@ -1,3 +1,14 @@
+
+if (document.readyState === "loading") {
+  document.addEventListener(
+    "DOMContentLoaded",
+    initVideoLightbox,
+    { once: true }
+  );
+} else {
+  initVideoLightbox();
+}
+
 /*
   Mediafile DNL - frontend
   VERSION 1.6.0
@@ -664,7 +675,13 @@ function previewFile(file) {
 
   openButton.addEventListener(
     "click",
-    () => openFile(file)
+    () => {
+      if (kind === "video") {
+        openVideoLightbox(file);
+      } else {
+        openFile(file);
+      }
+    }
   );
 
 
@@ -1007,7 +1024,13 @@ function createFileElement(file) {
 
   previewButton.addEventListener(
     "click",
-    () => previewFile(file)
+    () => {
+      if (kind === "video") {
+        openVideoLightbox(file);
+      } else {
+        previewFile(file);
+      }
+    }
   );
 
 
@@ -1462,6 +1485,186 @@ if (fileInput) {
 
 
 
+
+// ============================================================
+// VISOR DE VIDEO — v1.8.0
+// ============================================================
+
+let videoFiles = [];
+let videoIndex = 0;
+
+function refreshVideoFiles() {
+  videoFiles = allFiles.filter(file => fileKind(file) === "video");
+}
+
+function openVideoLightbox(file) {
+  refreshVideoFiles();
+
+  const index = videoFiles.findIndex(item => {
+    const a = item.fileId || item.id || getFileName(item);
+    const b = file.fileId || file.id || getFileName(file);
+    return String(a) === String(b);
+  });
+
+  videoIndex = index >= 0 ? index : 0;
+  renderVideoLightbox();
+
+  const box = $("#videoLightbox");
+  if (box) {
+    box.hidden = false;
+    document.body.classList.add("video-open");
+  }
+
+  log("Visor de video abierto", {
+    videos: videoFiles.length,
+    indice: videoIndex + 1
+  });
+}
+
+function closeVideoLightbox() {
+  const box = $("#videoLightbox");
+  const player = $("#videoLightboxPlayer");
+
+  if (player) {
+    player.pause();
+    player.removeAttribute("src");
+    player.load();
+  }
+
+  if (box) {
+    box.hidden = true;
+  }
+
+  document.body.classList.remove("video-open");
+}
+
+function renderVideoLightbox() {
+  refreshVideoFiles();
+
+  if (!videoFiles.length) {
+    closeVideoLightbox();
+    return;
+  }
+
+  if (videoIndex < 0) videoIndex = videoFiles.length - 1;
+  if (videoIndex >= videoFiles.length) videoIndex = 0;
+
+  const file = videoFiles[videoIndex];
+  const player = $("#videoLightboxPlayer");
+  const title = $("#videoLightboxTitle");
+  const counter = $("#videoLightboxCounter");
+  const prev = $("#videoLightboxPrev");
+  const next = $("#videoLightboxNext");
+
+  if (title) title.textContent = getFileName(file);
+  if (counter) {
+    counter.textContent = `${videoIndex + 1} / ${videoFiles.length}`;
+  }
+
+  if (prev) prev.disabled = videoFiles.length <= 1;
+  if (next) next.disabled = videoFiles.length <= 1;
+
+  if (player) {
+    player.pause();
+    player.src = getFileUrl(file);
+    player.load();
+
+    // No reproducción automática: el usuario decide cuándo reproducir.
+    player.currentTime = 0;
+  }
+}
+
+function moveVideo(direction) {
+  if (videoFiles.length <= 1) return;
+
+  videoIndex += direction;
+
+  if (videoIndex < 0) videoIndex = videoFiles.length - 1;
+  if (videoIndex >= videoFiles.length) videoIndex = 0;
+
+  renderVideoLightbox();
+}
+
+function downloadCurrentVideo() {
+  if (!videoFiles.length) return;
+
+  const file = videoFiles[videoIndex];
+  const name = getFileName(file);
+
+  // El Worker controla Content-Disposition mediante download=1.
+  const url =
+    CONFIG.API_URL +
+    "/download?file=" +
+    encodeURIComponent(name) +
+    "&download=1";
+
+  log("Solicitando descarga de video", {
+    name,
+    url
+  });
+
+  window.location.href = url;
+}
+
+function initVideoLightbox() {
+  document.addEventListener("click", event => {
+    const target = event.target;
+
+    if (target.closest("#videoLightboxClose") ||
+        target.closest("[data-video-close]")) {
+      event.preventDefault();
+      event.stopPropagation();
+      closeVideoLightbox();
+      return;
+    }
+
+    if (target.closest("#videoLightboxPrev")) {
+      event.preventDefault();
+      event.stopPropagation();
+      moveVideo(-1);
+      return;
+    }
+
+    if (target.closest("#videoLightboxNext")) {
+      event.preventDefault();
+      event.stopPropagation();
+      moveVideo(1);
+      return;
+    }
+
+    if (target.closest("#videoLightboxDownload")) {
+      event.preventDefault();
+      event.stopPropagation();
+      downloadCurrentVideo();
+      return;
+    }
+  }, true);
+
+  document.addEventListener("keydown", event => {
+    const box = $("#videoLightbox");
+    if (!box || box.hidden) return;
+
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeVideoLightbox();
+    } else if (event.key === "ArrowLeft") {
+      event.preventDefault();
+      moveVideo(-1);
+    } else if (event.key === "ArrowRight") {
+      event.preventDefault();
+      moveVideo(1);
+    }
+  });
+
+  log("Visor de video inicializado", {
+    cerrar: !!$("#videoLightboxClose"),
+    anterior: !!$("#videoLightboxPrev"),
+    siguiente: !!$("#videoLightboxNext"),
+    descargar: !!$("#videoLightboxDownload")
+  });
+}
+
+
 // ============================================================
 // VISOR DE IMAGEN / LIGHTBOX — v1.6.0
 // ============================================================
@@ -1899,3 +2102,22 @@ log(
 
 
 loadFiles();
+
+
+// Fallback: abrir videos desde cualquier tarjeta/listado que tenga un elemento
+// marcado con data-video-open, sin alterar los controles existentes.
+document.addEventListener("click", event => {
+  const target = event.target.closest("[data-video-open]");
+  if (!target) return;
+
+  event.preventDefault();
+  event.stopPropagation();
+
+  const index = Number(target.dataset.videoIndex);
+  refreshVideoFiles();
+
+  if (Number.isFinite(index) && videoFiles[index]) {
+    openVideoLightbox(videoFiles[index]);
+  }
+}, true);
+
