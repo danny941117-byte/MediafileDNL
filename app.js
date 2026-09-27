@@ -19,7 +19,7 @@ if (document.readyState === "loading") {
 
 const CONFIG = {
   API_URL: "https://m-e2a5ediafile-dnl.danny941117.workers.dev",
-  VERSION: "1.9.1"
+  VERSION: "1.6.0"
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -249,7 +249,6 @@ async function deleteFile(file) {
       encodeURIComponent(name),
       {
         method: "DELETE",
-        credentials: "include",
         cache: "no-store"
       }
     );
@@ -408,80 +407,34 @@ function openFile(file) {
 // DESCARGAR ARCHIVO
 // ============================================================
 
-async function downloadFile(file) {
-  const url = getFileUrl(file);
-  const name = getFileName(file);
+function downloadFile(file) {
+  const url =
+    getFileUrl(file);
 
-  log("Descargando archivo como Blob", {
-    name,
-    url
-  });
+  const name =
+    getFileName(file);
 
-  try {
-    // IMPORTANTE:
-    // El atributo <a download> no es fiable cuando la URL
-    // pertenece a otro dominio. Aquí primero obtenemos el
-    // archivo mediante fetch y luego creamos una URL local.
-    const response = await fetch(url, {
-      method: "GET",
-      mode: "cors",
-      credentials: "include",
-      cache: "no-store"
-    });
-
-    log("Respuesta de descarga", {
-      status: response.status,
-      ok: response.ok,
-      contentType: response.headers.get("content-type"),
-      contentLength: response.headers.get("content-length")
-    });
-
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
-    }
-
-    const blob = await response.blob();
-
-    if (!blob || !blob.size) {
-      throw new Error("El archivo descargado está vacío.");
-    }
-
-    const blobUrl = URL.createObjectURL(blob);
-
-    const link = document.createElement("a");
-    link.href = blobUrl;
-    link.download = name;
-    link.style.display = "none";
-
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-
-    // No revocar inmediatamente: Android/Chrome puede necesitar
-    // unos instantes para iniciar la descarga.
-    setTimeout(() => {
-      URL.revokeObjectURL(blobUrl);
-    }, 15000);
-
-    log("DESCARGA INICIADA CORRECTAMENTE", {
+  log(
+    "Descargando archivo",
+    {
       name,
-      size: blob.size,
-      type: blob.type || "desconocido"
-    });
+      url
+    }
+  );
 
-  } catch (error) {
-    log("ERROR DE DESCARGA", {
-      name,
-      url,
-      message: error?.message || String(error)
-    });
+  const link =
+    document.createElement("a");
 
-    alert(
-      "No se pudo descargar el archivo.\n\n" +
-      (error?.message || "Error desconocido") +
-      "\n\nRevisa el panel de Diagnóstico."
-    );
-  }
+  link.href = url;
+  link.download = name;
+  link.target = "_blank";
+  link.rel = "noopener";
+
+  document.body.appendChild(link);
+
+  link.click();
+
+  link.remove();
 }
 
 
@@ -1226,7 +1179,6 @@ async function loadFiles() {
         CONFIG.API_URL,
         {
           method: "GET",
-          credentials: "include",
           cache: "no-store"
         }
       );
@@ -1360,7 +1312,6 @@ async function uploadFiles(files) {
           CONFIG.API_URL,
           {
             method: "POST",
-            credentials: "include",
 
             headers: {
               "X-Archivo-Nombre":
@@ -1582,18 +1533,196 @@ if (fileInput) {
 
 
 // ============================================================
-// VISOR DE VIDEO — v1.8.0
+// VISOR DE VIDEO — v1.9.0 FLOTANTE / RESPONSIVO
 // ============================================================
 
 let videoFiles = [];
 let videoIndex = 0;
+let videoResizeBound = false;
+let videoMetadataBound = false;
 
 function refreshVideoFiles() {
   videoFiles = allFiles.filter(file => fileKind(file) === "video");
 }
 
+function ensureFloatingVideoStyles() {
+  if (document.getElementById("mediafile-video-floating-styles")) return;
+
+  const style = document.createElement("style");
+  style.id = "mediafile-video-floating-styles";
+  style.textContent = `
+    #videoLightbox.video-lightbox {
+      position: fixed !important;
+      inset: 0 !important;
+      z-index: 99990 !important;
+      display: grid !important;
+      place-items: center !important;
+      padding: max(12px, env(safe-area-inset-top))
+               max(12px, env(safe-area-inset-right))
+               max(12px, env(safe-area-inset-bottom))
+               max(12px, env(safe-area-inset-left)) !important;
+      box-sizing: border-box !important;
+    }
+
+    #videoLightbox .video-backdrop {
+      position: absolute !important;
+      inset: 0 !important;
+    }
+
+    #videoLightbox .video-dialog {
+      position: relative !important;
+      z-index: 2 !important;
+      width: min(92vw, 900px) !important;
+      max-width: 92vw !important;
+      max-height: calc(100dvh - 24px) !important;
+      height: auto !important;
+      margin: 0 !important;
+      display: flex !important;
+      flex-direction: column !important;
+      overflow: hidden !important;
+      box-sizing: border-box !important;
+    }
+
+    #videoLightbox .video-topbar,
+    #videoLightbox .video-bottom {
+      flex: 0 0 auto !important;
+    }
+
+    #videoLightbox .video-stage {
+      position: relative !important;
+      min-width: 0 !important;
+      min-height: 0 !important;
+      width: 100% !important;
+      max-height: calc(100dvh - 150px) !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      overflow: hidden !important;
+      background: #000 !important;
+    }
+
+    #videoLightbox .video-player {
+      display: block !important;
+      width: auto !important;
+      height: auto !important;
+      max-width: 100% !important;
+      max-height: calc(100dvh - 150px) !important;
+      object-fit: contain !important;
+      background: #000 !important;
+      margin: 0 auto !important;
+      flex: 0 1 auto !important;
+    }
+
+    #videoLightbox .video-arrow {
+      position: absolute !important;
+      top: 50% !important;
+      transform: translateY(-50%) !important;
+      z-index: 4 !important;
+    }
+
+    #videoLightbox .video-prev { left: 8px !important; }
+    #videoLightbox .video-next { right: 8px !important; }
+
+    #videoLightbox .video-arrow:disabled {
+      opacity: .35 !important;
+      pointer-events: none !important;
+    }
+
+    @media (max-width: 600px) {
+      #videoLightbox.video-lightbox {
+        padding: 8px !important;
+      }
+      #videoLightbox .video-dialog {
+        width: 94vw !important;
+        max-width: 94vw !important;
+        max-height: calc(100dvh - 16px) !important;
+        border-radius: 18px !important;
+      }
+      #videoLightbox .video-stage {
+        max-height: calc(100dvh - 132px) !important;
+      }
+      #videoLightbox .video-player {
+        max-height: calc(100dvh - 132px) !important;
+        max-width: 100% !important;
+      }
+    }
+  `;
+
+  document.head.appendChild(style);
+}
+
+function fitFloatingVideo() {
+  const player = $("#videoLightboxPlayer");
+  const stage = document.querySelector("#videoLightbox .video-stage");
+  const dialog = document.querySelector("#videoLightbox .video-dialog");
+
+  if (!player || !stage || !dialog) return;
+
+  const vw = Math.max(240, window.innerWidth || 360);
+  const vh = Math.max(320, window.innerHeight || 640);
+
+  const maxWidth = Math.min(vw * 0.90, 900);
+  const maxHeight = Math.max(180, vh - 150);
+
+  const naturalWidth = Number(player.videoWidth);
+  const naturalHeight = Number(player.videoHeight);
+
+  if (naturalWidth > 0 && naturalHeight > 0) {
+    const ratio = naturalWidth / naturalHeight;
+
+    let width = maxWidth;
+    let height = width / ratio;
+
+    if (height > maxHeight) {
+      height = maxHeight;
+      width = height * ratio;
+    }
+
+    width = Math.max(1, Math.floor(width));
+    height = Math.max(1, Math.floor(height));
+
+    player.style.width = `${width}px`;
+    player.style.height = `${height}px`;
+
+    stage.style.width = `${Math.min(width + 90, maxWidth + 90)}px`;
+    stage.style.maxWidth = "100%";
+  } else {
+    player.style.width = "auto";
+    player.style.height = "auto";
+    stage.style.width = "100%";
+  }
+}
+
+function bindFloatingVideoEvents() {
+  if (videoMetadataBound) return;
+  videoMetadataBound = true;
+
+  const player = $("#videoLightboxPlayer");
+  if (player) {
+    player.addEventListener("loadedmetadata", fitFloatingVideo);
+    player.addEventListener("loadeddata", fitFloatingVideo);
+    player.addEventListener("error", () => {
+      log("ERROR DEL REPRODUCTOR DE VIDEO", {
+        src: player.currentSrc || player.src,
+        code: player.error?.code || null,
+        message: player.error?.message || "El navegador no pudo reproducir el video."
+      });
+    });
+  }
+
+  if (!videoResizeBound) {
+    videoResizeBound = true;
+    window.addEventListener("resize", fitFloatingVideo, { passive: true });
+    window.addEventListener("orientationchange", () => {
+      setTimeout(fitFloatingVideo, 120);
+    }, { passive: true });
+  }
+}
+
 function openVideoLightbox(file) {
   refreshVideoFiles();
+  ensureFloatingVideoStyles();
+  bindFloatingVideoEvents();
 
   const index = videoFiles.findIndex(item => {
     const a = item.fileId || item.id || getFileName(item);
@@ -1610,7 +1739,11 @@ function openVideoLightbox(file) {
     document.body.classList.add("video-open");
   }
 
-  log("Visor de video abierto", {
+  requestAnimationFrame(() => {
+    fitFloatingVideo();
+  });
+
+  log("Visor de video flotante abierto", {
     videos: videoFiles.length,
     indice: videoIndex + 1
   });
@@ -1621,9 +1754,11 @@ function closeVideoLightbox() {
   const player = $("#videoLightboxPlayer");
 
   if (player) {
-    player.pause();
+    try { player.pause(); } catch (_) {}
     player.removeAttribute("src");
     player.load();
+    player.style.width = "";
+    player.style.height = "";
   }
 
   if (box) {
@@ -1660,13 +1795,15 @@ function renderVideoLightbox() {
   if (next) next.disabled = videoFiles.length <= 1;
 
   if (player) {
-    player.pause();
+    try { player.pause(); } catch (_) {}
+    player.style.width = "";
+    player.style.height = "";
     player.src = getFileUrl(file);
     player.load();
-
-    // No reproducción automática: el usuario decide cuándo reproducir.
     player.currentTime = 0;
   }
+
+  requestAnimationFrame(fitFloatingVideo);
 }
 
 function moveVideo(direction) {
@@ -1694,17 +1831,11 @@ async function downloadCurrentVideo() {
       button.textContent = "⏳ Descargando…";
     }
 
-    log("Descargando video como Blob", {
-      name,
-      url
-    });
+    log("Descargando video como Blob", { name, url });
 
-    // Igual que la descarga de imágenes que ya comprobamos
-    // que funciona en Android/Chrome.
     const response = await fetch(url, {
       method: "GET",
       mode: "cors",
-      credentials: "include",
       cache: "no-store"
     });
 
@@ -1719,32 +1850,26 @@ async function downloadCurrentVideo() {
     }
 
     const blobUrl = URL.createObjectURL(blob);
-
     const link = document.createElement("a");
     link.href = blobUrl;
     link.download = name;
     link.style.display = "none";
-
     document.body.appendChild(link);
     link.click();
     link.remove();
 
-    setTimeout(() => {
-      URL.revokeObjectURL(blobUrl);
-    }, 10000);
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
 
     log("Descarga de video iniciada correctamente", {
       name,
       size: blob.size,
       type: blob.type
     });
-
   } catch (error) {
     log("ERROR DE DESCARGA DE VIDEO", {
       name,
       message: error?.message || String(error)
     });
-
     alert("No se pudo descargar el video. Revisa el diagnóstico.");
   } finally {
     setTimeout(() => {
@@ -1755,7 +1880,11 @@ async function downloadCurrentVideo() {
     }, 1200);
   }
 }
+
 function initVideoLightbox() {
+  ensureFloatingVideoStyles();
+  bindFloatingVideoEvents();
+
   document.addEventListener("click", event => {
     const target = event.target;
 
@@ -1805,7 +1934,7 @@ function initVideoLightbox() {
     }
   });
 
-  log("Visor de video inicializado", {
+  log("Visor de video flotante inicializado", {
     cerrar: !!$("#videoLightboxClose"),
     anterior: !!$("#videoLightboxPrev"),
     siguiente: !!$("#videoLightboxNext"),
@@ -1948,7 +2077,6 @@ async function downloadCurrentLightboxImage() {
     const response = await fetch(url, {
       method: "GET",
       mode: "cors",
-      credentials: "include",
       cache: "no-store"
     });
 
@@ -2214,10 +2342,9 @@ if (navConfig) {
     "click",
     () => {
 
-      const gate = document.getElementById("authGate");
-      if (gate) {
-        alert('La sesión está activa. Usa el botón "Cerrar sesión" del panel de acceso si deseas salir.');
-      }
+      alert(
+        "Configuración avanzada de Mediafile DNL."
+      );
     }
   );
 }
@@ -2236,154 +2363,6 @@ if (galleryBack) {
 
 initImageLightbox();
 
-
-// ============================================================
-// ACCESO PRIVADO MEDIAFILE DNL
-// ============================================================
-
-function setAppLocked(locked) {
-  document.body.classList.toggle("mediafile-locked", locked);
-  const gate = document.getElementById("authGate");
-  if (gate) gate.hidden = !locked;
-}
-
-async function checkSession() {
-  try {
-    const response = await fetch(
-      CONFIG.API_URL + "/auth/session",
-      {
-        method: "GET",
-        credentials: "include",
-        cache: "no-store"
-      }
-    );
-
-    const data = await response.json();
-
-    if (response.ok && data?.autenticado === true) {
-      setAppLocked(false);
-      log("Sesión válida", { autenticado: true });
-      loadFiles();
-      return true;
-    }
-
-    setAppLocked(true);
-    log("Sesión requerida");
-    return false;
-
-  } catch (error) {
-    setAppLocked(true);
-    log("ERROR DE AUTENTICACIÓN", {
-      message: error?.message || String(error)
-    });
-    return false;
-  }
-}
-
-async function loginMediafile(password) {
-  const button = document.getElementById("authLoginButton");
-  const message = document.getElementById("authMessage");
-
-  if (button) {
-    button.disabled = true;
-    button.textContent = "⏳ Verificando…";
-  }
-
-  if (message) {
-    message.textContent = "Verificando acceso…";
-  }
-
-  try {
-    const response = await fetch(
-      CONFIG.API_URL + "/auth/login",
-      {
-        method: "POST",
-        credentials: "include",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({ password })
-      }
-    );
-
-    const data = await response.json();
-
-    if (!response.ok || data?.ok !== true) {
-      throw new Error(data?.error || "No se pudo iniciar sesión.");
-    }
-
-    if (message) message.textContent = "Acceso concedido.";
-
-    const input = document.getElementById("authPassword");
-    if (input) input.value = "";
-
-    setAppLocked(false);
-    log("Inicio de sesión correcto");
-    await loadFiles();
-
-  } catch (error) {
-    setAppLocked(true);
-    if (message) {
-      message.textContent = error?.message || "Contraseña incorrecta.";
-    }
-    log("ERROR DE LOGIN", {
-      message: error?.message || String(error)
-    });
-  } finally {
-    if (button) {
-      button.disabled = false;
-      button.textContent = "Entrar";
-    }
-  }
-}
-
-async function logoutMediafile() {
-  try {
-    await fetch(
-      CONFIG.API_URL + "/auth/logout",
-      {
-        method: "POST",
-        credentials: "include",
-        cache: "no-store"
-      }
-    );
-  } catch (_) {}
-
-  setAppLocked(true);
-  allFiles = [];
-  renderFiles();
-
-  const message = document.getElementById("authMessage");
-  if (message) message.textContent = "Sesión cerrada.";
-  log("Sesión cerrada");
-}
-
-function initAuth() {
-  const form = document.getElementById("authForm");
-  const input = document.getElementById("authPassword");
-  const logout = document.getElementById("btnLogout");
-
-  if (form) {
-    form.addEventListener("submit", event => {
-      event.preventDefault();
-      const password = input?.value || "";
-      if (!password) {
-        const message = document.getElementById("authMessage");
-        if (message) message.textContent = "Escribe la contraseña.";
-        return;
-      }
-      loginMediafile(password);
-    });
-  }
-
-  if (logout) {
-    logout.addEventListener("click", logoutMediafile);
-  }
-
-  setAppLocked(true);
-  checkSession();
-}
-
 // ============================================================
 // INICIO
 // ============================================================
@@ -2400,7 +2379,8 @@ log(
 );
 
 
-initAuth();
+loadFiles();
+
 
 // Fallback: abrir videos desde cualquier tarjeta/listado que tenga un elemento
 // marcado con data-video-open, sin alterar los controles existentes.
