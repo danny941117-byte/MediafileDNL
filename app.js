@@ -86,6 +86,363 @@ function setConnection(ok, text) {
 
 
 // ============================================================
+// AUTENTICACIÓN — SESIÓN PRIVADA MEDIAFILE DNL
+// El Worker controla la contraseña y crea la cookie HttpOnly.
+// El frontend NUNCA conoce MEDIAFILE_PASSWORD ni secretos B2.
+// ============================================================
+
+let mediafileAuthenticated = false;
+let mediafileAuthBusy = false;
+
+function injectAuthStyles() {
+  if (document.getElementById("mediafile-auth-styles")) return;
+
+  const style = document.createElement("style");
+  style.id = "mediafile-auth-styles";
+  style.textContent = `
+    #mediafileAuthOverlay{
+      position:fixed;
+      inset:0;
+      z-index:1000000;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      padding:18px;
+      box-sizing:border-box;
+      background:rgba(2,7,15,.88);
+      backdrop-filter:blur(18px);
+      -webkit-backdrop-filter:blur(18px);
+    }
+    #mediafileAuthOverlay[hidden]{display:none!important}
+    .mf-auth-card{
+      width:min(420px,100%);
+      padding:28px 22px 22px;
+      border:1px solid rgba(82,216,255,.30);
+      border-radius:24px;
+      background:linear-gradient(145deg,rgba(8,22,39,.98),rgba(4,11,22,.98));
+      box-shadow:0 28px 90px rgba(0,0,0,.65),0 0 45px rgba(82,216,255,.10);
+      color:#edf7ff;
+    }
+    .mf-auth-icon{
+      width:64px;
+      height:64px;
+      margin:0 auto 16px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      border-radius:18px;
+      background:linear-gradient(135deg,#52d8ff,#4d8dff);
+      color:#04101d;
+      font-size:30px;
+      font-weight:900;
+      box-shadow:0 12px 30px rgba(82,216,255,.18);
+    }
+    .mf-auth-card h2{margin:0;text-align:center;font-size:25px}
+    .mf-auth-card p{margin:8px 0 20px;text-align:center;color:#89a7bb;line-height:1.45}
+    .mf-auth-label{display:block;margin:0 0 7px;color:#a9c6d8;font-size:13px;font-weight:700}
+    .mf-auth-input{
+      width:100%;
+      min-height:48px;
+      box-sizing:border-box;
+      border:1px solid rgba(82,216,255,.24);
+      border-radius:13px;
+      padding:12px 14px;
+      outline:none;
+      background:rgba(3,12,22,.78);
+      color:#fff;
+      font-size:16px;
+    }
+    .mf-auth-input:focus{border-color:rgba(82,216,255,.65);box-shadow:0 0 0 3px rgba(82,216,255,.08)}
+    .mf-auth-button{
+      width:100%;
+      min-height:48px;
+      margin-top:13px;
+      border:0;
+      border-radius:13px;
+      background:linear-gradient(135deg,#52d8ff,#4d8dff);
+      color:#04101d;
+      font-size:16px;
+      font-weight:900;
+      cursor:pointer;
+    }
+    .mf-auth-button:disabled{opacity:.62;cursor:wait}
+    .mf-auth-error{
+      min-height:20px;
+      margin-top:12px;
+      color:#ff8296;
+      font-size:13px;
+      text-align:center;
+    }
+    #mediafileLogoutButton{
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      gap:6px;
+      min-height:38px;
+      padding:8px 12px;
+      margin-left:7px;
+      border:1px solid rgba(255,102,127,.28);
+      border-radius:11px;
+      background:rgba(255,102,127,.08);
+      color:#ffdce2;
+      font-weight:800;
+      cursor:pointer;
+    }
+    #mediafileLogoutButton:active{transform:scale(.98)}
+    @media(max-width:520px){
+      #mediafileAuthOverlay{padding:14px}
+      .mf-auth-card{padding:24px 17px 18px;border-radius:21px}
+      .mf-auth-card h2{font-size:22px}
+      #mediafileLogoutButton{padding:7px 9px;font-size:12px}
+    }
+  `;
+  document.head.appendChild(style);
+}
+
+function ensureAuthUI() {
+  injectAuthStyles();
+
+  let overlay = document.getElementById("mediafileAuthOverlay");
+  if (!overlay) {
+    overlay = document.createElement("div");
+    overlay.id = "mediafileAuthOverlay";
+    overlay.hidden = true;
+    overlay.innerHTML = `
+      <div class="mf-auth-card" role="dialog" aria-modal="true" aria-labelledby="mfAuthTitle">
+        <div class="mf-auth-icon">🔐</div>
+        <h2 id="mfAuthTitle">Mediafile DNL</h2>
+        <p>Introduce la contraseña para acceder al almacenamiento privado.</p>
+        <form id="mediafileLoginForm" autocomplete="on">
+          <label class="mf-auth-label" for="mediafilePassword">Contraseña</label>
+          <input
+            id="mediafilePassword"
+            class="mf-auth-input"
+            type="password"
+            autocomplete="current-password"
+            placeholder="Contraseña"
+            enterkeyhint="go"
+            required
+          >
+          <button id="mediafileLoginButton" class="mf-auth-button" type="submit">
+            🔓 Iniciar sesión
+          </button>
+          <div id="mediafileAuthError" class="mf-auth-error" aria-live="polite"></div>
+        </form>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+  }
+
+  const topbar = document.querySelector(".topbar");
+  if (topbar && !document.getElementById("mediafileLogoutButton")) {
+    const refresh = document.getElementById("btnRefresh");
+    const button = document.createElement("button");
+    button.id = "mediafileLogoutButton";
+    button.type = "button";
+    button.title = "Cerrar sesión";
+    button.setAttribute("aria-label", "Cerrar sesión");
+    button.textContent = "🚪 Salir";
+    if (refresh && refresh.parentNode === topbar) {
+      topbar.insertBefore(button, refresh);
+    } else {
+      topbar.appendChild(button);
+    }
+    button.addEventListener("click", logoutMediafile);
+  }
+
+  const form = document.getElementById("mediafileLoginForm");
+  if (form && form.dataset.bound !== "1") {
+    form.dataset.bound = "1";
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const input = document.getElementById("mediafilePassword");
+      await loginMediafile(input ? input.value : "");
+    });
+  }
+}
+
+function setAuthOverlay(visible, message = "") {
+  ensureAuthUI();
+  const overlay = document.getElementById("mediafileAuthOverlay");
+  const error = document.getElementById("mediafileAuthError");
+  const input = document.getElementById("mediafilePassword");
+  const button = document.getElementById("mediafileLoginButton");
+  const logout = document.getElementById("mediafileLogoutButton");
+
+  if (overlay) overlay.hidden = !visible;
+  if (error) error.textContent = message || "";
+  if (logout) logout.hidden = !mediafileAuthenticated;
+
+  if (visible && input) {
+    setTimeout(() => input.focus(), 60);
+  }
+  if (button) {
+    button.disabled = mediafileAuthBusy;
+    button.textContent = mediafileAuthBusy
+      ? "⏳ Verificando..."
+      : "🔓 Iniciar sesión";
+  }
+}
+
+async function loginMediafile(password) {
+  const value = String(password || "");
+  const error = document.getElementById("mediafileAuthError");
+
+  if (!value) {
+    if (error) error.textContent = "Introduce la contraseña.";
+    return false;
+  }
+
+  if (mediafileAuthBusy) return false;
+  mediafileAuthBusy = true;
+  setAuthOverlay(true);
+  log("Intentando iniciar sesión");
+
+  try {
+    const response = await fetch(
+      CONFIG.API_URL + "/auth/login",
+      {
+        method: "POST",
+        credentials: "include",
+        cache: "no-store",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: value })
+      }
+    );
+
+    const text = await response.text();
+    let data;
+    try { data = JSON.parse(text); }
+    catch { data = { raw: text }; }
+
+    log(
+      response.ok && data?.ok !== false ? "LOGIN OK" : "ERROR DE LOGIN",
+      data
+    );
+
+    if (!response.ok || data?.ok === false) {
+      const message = data?.error || `HTTP ${response.status}`;
+      if (error) error.textContent = message;
+      mediafileAuthenticated = false;
+      return false;
+    }
+
+    mediafileAuthenticated = true;
+    if (error) error.textContent = "";
+    setAuthOverlay(false);
+    setConnection(false, "Sesión válida · conectando...");
+    await loadFiles();
+    return true;
+
+  } catch (err) {
+    const message = err?.message || String(err);
+    log("ERROR DE LOGIN", { message });
+    if (error) error.textContent = "No se pudo contactar con la API.";
+    mediafileAuthenticated = false;
+    return false;
+  } finally {
+    mediafileAuthBusy = false;
+    if (!mediafileAuthenticated) setAuthOverlay(true);
+    else setAuthOverlay(false);
+  }
+}
+
+async function checkMediafileSession() {
+  ensureAuthUI();
+  log("Comprobando sesión");
+  setConnection(false, "Comprobando sesión...");
+
+  try {
+    const response = await fetch(
+      CONFIG.API_URL + "/auth/session",
+      {
+        method: "GET",
+        credentials: "include",
+        cache: "no-store"
+      }
+    );
+
+    const text = await response.text();
+    let data;
+    try { data = JSON.parse(text); }
+    catch { data = { raw: text }; }
+
+    log("Estado de sesión", data);
+
+    if (!response.ok) {
+      throw new Error(data?.error || `HTTP ${response.status}`);
+    }
+
+    mediafileAuthenticated = data?.autenticado === true;
+
+    if (mediafileAuthenticated) {
+      setAuthOverlay(false);
+      await loadFiles();
+      return true;
+    }
+
+    setConnection(false, "Sesión requerida");
+    setAuthOverlay(true);
+    return false;
+
+  } catch (err) {
+    mediafileAuthenticated = false;
+    const message = err?.message || String(err);
+    log("ERROR DE AUTENTICACIÓN", { message });
+    setConnection(false, "No se pudo comprobar la sesión");
+    setAuthOverlay(true, "No se pudo comprobar la sesión. Intenta de nuevo.");
+    return false;
+  }
+}
+
+async function logoutMediafile() {
+  if (mediafileAuthBusy) return;
+
+  const confirmed = window.confirm("¿Cerrar sesión de Mediafile DNL?");
+  if (!confirmed) return;
+
+  mediafileAuthBusy = true;
+  log("Cerrando sesión");
+
+  try {
+    const response = await fetch(
+      CONFIG.API_URL + "/auth/logout",
+      {
+        method: "POST",
+        credentials: "include",
+        cache: "no-store"
+      }
+    );
+
+    const text = await response.text();
+    let data;
+    try { data = JSON.parse(text); }
+    catch { data = { raw: text }; }
+
+    log(
+      response.ok ? "SESIÓN CERRADA" : "ERROR AL CERRAR SESIÓN",
+      data
+    );
+
+  } catch (err) {
+    log("ERROR AL CERRAR SESIÓN", {
+      message: err?.message || String(err)
+    });
+  } finally {
+    mediafileAuthenticated = false;
+    mediafileAuthBusy = false;
+    allFiles = [];
+    activeFilter = "all";
+    activePhotoDay = null;
+    renderFiles();
+    updateStorageInfo();
+    setConnection(false, "Sesión cerrada");
+    setAuthOverlay(true);
+  }
+}
+
+
+// ============================================================
 // ESCAPAR HTML
 // ============================================================
 
@@ -274,6 +631,14 @@ async function deleteFile(file) {
       response.ok ? "ELIMINACIÓN OK" : "ERROR AL ELIMINAR",
       data
     );
+
+    if (response.status === 401 || data?.error === "Sesión no autorizada.") {
+      mediafileAuthenticated = false;
+      setConnection(false, "Sesión no autorizada");
+      log("SESIÓN EXPIRADA DURANTE LA ELIMINACIÓN", data);
+      setAuthOverlay(true);
+      return;
+    }
 
     if (!response.ok || (data && data.ok === false)) {
       throw new Error(
@@ -1664,117 +2029,104 @@ function updateStorageInfo() {
 
 async function loadFiles() {
 
+  if (!mediafileAuthenticated) {
+    log("LISTADO BLOQUEADO", "No hay una sesión autenticada.");
+    setConnection(false, "Sesión requerida");
+    setAuthOverlay(true);
+    return false;
+  }
+
   log(
     "Consultando API",
     CONFIG.API_URL
   );
-
 
   setConnection(
     false,
     "Conectando..."
   );
 
-
   try {
-
-    const response =
-      await fetch(
-        CONFIG.API_URL,
-        {
-          method: "GET",
-          credentials: "include",
-          cache: "no-store"
-        }
-      );
-
-
-    const text =
-      await response.text();
-
-
-    let data;
-
-
-    try {
-
-      data =
-        JSON.parse(
-          text
-        );
-
-    } catch {
-
-      data = {
-        raw: text
-      };
-    }
-
-
-    log(
-      "Respuesta API",
-      data
+    const response = await fetch(
+      CONFIG.API_URL,
+      {
+        method: "GET",
+        credentials: "include",
+        cache: "no-store"
+      }
     );
 
+    const text = await response.text();
+    let data;
+
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = { raw: text };
+    }
+
+    log("Respuesta API", data);
+
+    if (response.status === 401 || data?.error === "Sesión no autorizada.") {
+      mediafileAuthenticated = false;
+      allFiles = [];
+      renderFiles();
+      updateStorageInfo();
+      setConnection(false, "Sesión no autorizada");
+      log("SESIÓN EXPIRADA O INVÁLIDA", {
+        http: response.status,
+        error: data?.error || "Sesión no autorizada."
+      });
+      setAuthOverlay(true);
+      return false;
+    }
 
     if (!response.ok) {
-
       throw new Error(
-        `HTTP ${response.status}`
+        data?.error || `HTTP ${response.status}`
       );
     }
 
-
-    if (
-      data &&
-      data.ok === false
-    ) {
-
+    if (data && data.ok === false) {
       throw new Error(
-        data.error ||
-        "La API devolvió un error"
+        data.error || "La API devolvió un error"
       );
     }
 
-
-    allFiles =
-      normalizeFiles(
-        data
-      );
-
+    allFiles = normalizeFiles(data);
 
     renderFiles();
     updateStorageInfo();
-
 
     setConnection(
       true,
       `API conectada · ${allFiles.length} archivo(s)`
     );
 
+    log("Listado cargado correctamente", {
+      archivos: allFiles.length
+    });
+
+    return true;
 
   } catch (error) {
-
     allFiles = [];
-
     renderFiles();
     updateStorageInfo();
 
-
     setConnection(
       false,
-      "No se pudo conectar con la API"
+      "Error de API"
     );
-
 
     log(
       "ERROR DE CONEXIÓN",
       {
-        message:
-          error?.message ||
-          String(error)
+        message: error?.message || String(error)
       }
     );
+
+    return false;
   }
 }
 
@@ -1789,6 +2141,12 @@ async function uploadFiles(files) {
     !files ||
     !files.length
   ) {
+    return;
+  }
+
+  if (!mediafileAuthenticated) {
+    log("SUBIDA BLOQUEADA", "Sesión no autenticada.");
+    setAuthOverlay(true);
     return;
   }
 
@@ -1868,10 +2226,18 @@ async function uploadFiles(files) {
       );
 
 
+      if (response.status === 401 || data?.error === "Sesión no autorizada.") {
+        mediafileAuthenticated = false;
+        setConnection(false, "Sesión no autorizada");
+        log("SESIÓN EXPIRADA DURANTE LA SUBIDA", data);
+        setAuthOverlay(true);
+        return;
+      }
+
       if (!response.ok) {
 
         throw new Error(
-          `HTTP ${response.status}`
+          data?.error || `HTTP ${response.status}`
         );
       }
 
@@ -1968,7 +2334,13 @@ if (refreshButton) {
 
   refreshButton.addEventListener(
     "click",
-    loadFiles
+    () => {
+      if (!mediafileAuthenticated) {
+        setAuthOverlay(true);
+        return;
+      }
+      loadFiles();
+    }
   );
 }
 
@@ -3220,7 +3592,8 @@ log(
 );
 
 
-loadFiles();
+ensureAuthUI();
+checkMediafileSession();
 
 
 // Fallback: abrir videos desde cualquier tarjeta/listado que tenga un elemento
