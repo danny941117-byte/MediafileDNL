@@ -1,14 +1,4 @@
 
-if (document.readyState === "loading") {
-  document.addEventListener(
-    "DOMContentLoaded",
-    initVideoLightbox,
-    { once: true }
-  );
-} else {
-  initVideoLightbox();
-}
-
 /*
   Mediafile DNL - frontend
   VERSION 1.6.1
@@ -19,7 +9,7 @@ if (document.readyState === "loading") {
 
 const CONFIG = {
   API_URL: "https://m-e2a5ediafile-dnl.danny941117.workers.dev",
-  VERSION: "1.9.5",
+  VERSION: "1.9.6",
   // Capacidad de referencia del almacenamiento B2 gratuito que estamos usando.
   // Si el bucket tiene otra capacidad, cambia solamente este valor.
   STORAGE_LIMIT_BYTES: 10 * 1024 * 1024 * 1024,
@@ -65,6 +55,27 @@ function log(title, data = "") {
       line + "\n\n" + logEl.textContent;
   }
 }
+
+
+window.addEventListener("error", (event) => {
+  try {
+    log("ERROR JAVASCRIPT", {
+      message: event?.message || "Error desconocido",
+      source: event?.filename || "",
+      line: event?.lineno || 0,
+      column: event?.colno || 0
+    });
+  } catch (_) {}
+});
+
+window.addEventListener("unhandledrejection", (event) => {
+  try {
+    const reason = event?.reason;
+    log("PROMESA NO CONTROLADA", {
+      message: reason?.message || String(reason || "Error desconocido")
+    });
+  } catch (_) {}
+});
 
 
 // ============================================================
@@ -3580,20 +3591,30 @@ initImageLightbox();
 // INICIO
 // ============================================================
 
-log(
-  "Mediafile DNL iniciado",
-  {
-    version:
-      CONFIG.VERSION,
-
-    api:
-      CONFIG.API_URL
+function startMediafileDNL() {
+  try {
+    initVideoLightbox();
+  } catch (error) {
+    log("ERROR AL INICIAR VISOR", { message: error?.message || String(error) });
   }
-);
 
+  log(
+    "Mediafile DNL iniciado",
+    {
+      version: CONFIG.VERSION,
+      api: CONFIG.API_URL
+    }
+  );
 
-ensureAuthUI();
-checkMediafileSession();
+  ensureAuthUI();
+  checkMediafileSession();
+}
+
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", startMediafileDNL, { once: true });
+} else {
+  startMediafileDNL();
+}
 
 
 // Fallback: abrir videos desde cualquier tarjeta/listado que tenga un elemento
